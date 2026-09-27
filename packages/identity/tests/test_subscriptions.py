@@ -30,14 +30,14 @@ async def test_upsert_subscription_creates_a_row_and_cascades_plan_id_to_the_acc
     subscription = await upsert_subscription(
         db_session,
         account_id=account.id,
-        plan_id="builder",
+        plan_id="pro",
         status="active",
-        provider="paddle",
+        provider="stripe",
         provider_subscription_id="sub_001",
         current_period_end=_PERIOD_END,
     )
 
-    assert subscription.plan_id == "builder"
+    assert subscription.plan_id == "pro"
     assert subscription.status == "active"
 
     reloaded = await get_subscription_by_account(db_session, account.id)
@@ -46,7 +46,7 @@ async def test_upsert_subscription_creates_a_row_and_cascades_plan_id_to_the_acc
 
     updated_account = await get_account_by_id(db_session, account.id)
     assert updated_account is not None
-    assert updated_account.plan_id == "builder"
+    assert updated_account.plan_id == "pro"
 
 
 async def test_upsert_subscription_replays_the_same_provider_id_as_an_update_not_a_duplicate(
@@ -56,9 +56,9 @@ async def test_upsert_subscription_replays_the_same_provider_id_as_an_update_not
     await upsert_subscription(
         db_session,
         account_id=account.id,
-        plan_id="builder",
+        plan_id="pro",
         status="active",
-        provider="paddle",
+        provider="stripe",
         provider_subscription_id="sub_002",
         current_period_end=_PERIOD_END,
     )
@@ -66,20 +66,20 @@ async def test_upsert_subscription_replays_the_same_provider_id_as_an_update_not
     await upsert_subscription(
         db_session,
         account_id=account.id,
-        plan_id="studio",
+        plan_id="pro",
         status="active",
-        provider="paddle",
+        provider="stripe",
         provider_subscription_id="sub_002",
         current_period_end=_PERIOD_END,
     )
 
     reloaded = await get_subscription_by_account(db_session, account.id)
     assert reloaded is not None
-    assert reloaded.plan_id == "studio"
+    assert reloaded.plan_id == "pro"
 
     updated_account = await get_account_by_id(db_session, account.id)
     assert updated_account is not None
-    assert updated_account.plan_id == "studio"
+    assert updated_account.plan_id == "pro"
 
 
 async def test_a_canceled_subscription_resets_the_account_to_free_not_the_canceled_plan(
@@ -89,9 +89,9 @@ async def test_a_canceled_subscription_resets_the_account_to_free_not_the_cancel
     await upsert_subscription(
         db_session,
         account_id=account.id,
-        plan_id="studio",
+        plan_id="pro",
         status="active",
-        provider="paddle",
+        provider="stripe",
         provider_subscription_id="sub_003",
         current_period_end=_PERIOD_END,
     )
@@ -99,9 +99,9 @@ async def test_a_canceled_subscription_resets_the_account_to_free_not_the_cancel
     await upsert_subscription(
         db_session,
         account_id=account.id,
-        plan_id="studio",
+        plan_id="pro",
         status="canceled",
-        provider="paddle",
+        provider="stripe",
         provider_subscription_id="sub_003",
         current_period_end=_PERIOD_END,
     )
@@ -118,9 +118,9 @@ async def test_get_subscription_by_account_returns_the_most_recently_created_row
     await upsert_subscription(
         db_session,
         account_id=account.id,
-        plan_id="builder",
+        plan_id="pro",
         status="active",
-        provider="paddle",
+        provider="stripe",
         provider_subscription_id="sub_004",
         current_period_end=_PERIOD_END,
     )
@@ -132,9 +132,9 @@ async def test_get_subscription_by_account_returns_the_most_recently_created_row
     await upsert_subscription(
         db_session,
         account_id=account.id,
-        plan_id="studio",
+        plan_id="pro",
         status="active",
-        provider="paddle",
+        provider="stripe",
         provider_subscription_id="sub_005",
         current_period_end=_PERIOD_END,
     )

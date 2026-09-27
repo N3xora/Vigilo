@@ -27,15 +27,15 @@ def test_consume_denies_one_over_the_limit():
 
 
 def test_consume_denies_when_amount_would_push_over_the_limit():
-    builder = entitlements("builder")  # targets_limit = 3
-    decision = consume(current_usage=2, amount=2, meter=Meter.TARGETS, entitlements=builder)
+    pro = entitlements("pro")  # targets_limit = 25
+    decision = consume(current_usage=24, amount=2, meter=Meter.TARGETS, entitlements=pro)
     assert decision.allowed is False
 
 
 def test_consume_is_unlimited_for_a_none_limit():
-    studio = entitlements("studio")  # scans_per_month_limit = None
+    pro = entitlements("pro")  # scans_per_month_limit = None
     decision = consume(
-        current_usage=100_000, amount=1, meter=Meter.SCANS_MONTHLY, entitlements=studio
+        current_usage=100_000, amount=1, meter=Meter.SCANS_MONTHLY, entitlements=pro
     )
     assert decision.allowed is True
     assert decision.limit is None
@@ -55,9 +55,9 @@ def test_consume_denies_any_monitor_on_the_free_plan():
     assert decision.limit == 0
 
 
-def test_consume_allows_monitors_up_to_the_builder_limit():
-    builder = entitlements("builder")  # monitors_limit = 3
-    decision = consume(current_usage=2, amount=1, meter=Meter.MONITORS, entitlements=builder)
+def test_consume_allows_monitors_up_to_the_pro_limit():
+    pro = entitlements("pro")  # monitors_limit = 25
+    decision = consume(current_usage=24, amount=1, meter=Meter.MONITORS, entitlements=pro)
     assert decision.allowed is True
 
 
@@ -68,7 +68,7 @@ def test_consume_denies_any_api_key_on_the_free_plan():
     assert decision.limit == 0
 
 
-def test_consume_allows_api_keys_up_to_the_business_limit():
-    business = entitlements("business")  # api_keys_limit = 100
-    decision = consume(current_usage=99, amount=1, meter=Meter.API_KEYS, entitlements=business)
+def test_consume_allows_api_keys_up_to_the_pro_limit():
+    pro = entitlements("pro")  # api_keys_limit = 25
+    decision = consume(current_usage=24, amount=1, meter=Meter.API_KEYS, entitlements=pro)
     assert decision.allowed is True

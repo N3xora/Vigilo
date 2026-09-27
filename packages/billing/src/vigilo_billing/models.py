@@ -11,9 +11,7 @@ from enum import StrEnum
 
 class PlanId(StrEnum):
     FREE = "free"
-    BUILDER = "builder"
-    STUDIO = "studio"
-    BUSINESS = "business"
+    PRO = "pro"
 
 
 class Meter(StrEnum):
@@ -47,6 +45,11 @@ class Plan:
     api_rate_limit_per_minute: int | None = None
     white_label_allowed: bool = False
     repo_connectors_limit: int | None = None
+    # Display price, in the smallest currency unit. What a customer is
+    # actually charged is the Stripe Price behind the plan
+    # (`STRIPE_PRICE_ID_PRO`) — keep the two in step when pricing changes.
+    price_cents: int = 0
+    currency: str = "usd"
 
 
 # Same shape as Plan, distinct name — docs/modules.md §11's own sketch

@@ -1,18 +1,17 @@
-"""The static plan table (docs/prooflight-vision-and-architecture.md §14),
-columns that exist in the product today only — `repo_connectors_limit` is
-a deferred feature with nothing to restrict yet (docs/build-roadmap.md's
-Phase 9 entry defers the repository connector to its own future phase),
-so that field on `Plan` is set but not read by any enforcement code.
-`monitors_limit` mirrors each plan's `targets_limit` — one monitor per
-target is the natural ceiling, and monitored scans don't consume
-`scans_per_month_limit` (docs/build-roadmap.md's Phase 8 entry), so this
-is the actual, only cost bound on monitoring. `api_keys_limit` is now
-enforced (Phase 9) — every plan sets it explicitly, including Free's `0`,
-closing the "unset means unlimited" bug the dataclass default would
-otherwise produce. `white_label_allowed` is Business-only, resolving a
-contradiction between the vision doc's own §11 artifact table ("Business
-tier") and §14 pricing table (which gave it to Studio) — decided in favor
-of introducing the Business tier the label actually names.
+"""The static plan table: Free and a single paid Pro plan.
+
+Pro is the union of every capability the product has — a single paid
+plan that withheld one would leave that feature reachable by no customer.
+`repo_connectors_limit` is set but not read by any enforcement code (the
+repository connector is deferred, docs/build-roadmap.md's Phase 9 entry).
+`monitors_limit` mirrors `targets_limit` — one monitor per target is the
+natural ceiling, and monitored scans don't consume `scans_per_month_limit`
+(docs/build-roadmap.md's Phase 8 entry). Every plan sets `api_keys_limit`
+explicitly, including Free's `0` — the dataclass default would otherwise
+mean "unlimited".
+
+Accounts still carrying a retired plan id (`builder`/`studio`/`business`)
+resolve to Free via `entitlements()`'s fail-closed fallback.
 """
 
 from __future__ import annotations
@@ -29,20 +28,8 @@ PLANS: dict[PlanId, Plan] = {
         monitors_limit=0,
         api_keys_limit=0,
     ),
-    PlanId.BUILDER: Plan(
-        plan_id=PlanId.BUILDER,
-        targets_limit=3,
-        scans_per_month_limit=100,
-        active_tier_allowed=True,
-        share_links_allowed=True,
-        monitoring_frequency="weekly",
-        monitors_limit=3,
-        api_keys_limit=1,
-        api_rate_limit_per_minute=60,
-        repo_connectors_limit=1,
-    ),
-    PlanId.STUDIO: Plan(
-        plan_id=PlanId.STUDIO,
+    PlanId.PRO: Plan(
+        plan_id=PlanId.PRO,
         targets_limit=25,
         scans_per_month_limit=None,
         active_tier_allowed=True,
@@ -51,19 +38,9 @@ PLANS: dict[PlanId, Plan] = {
         monitors_limit=25,
         api_keys_limit=25,
         api_rate_limit_per_minute=300,
-        repo_connectors_limit=10,
-    ),
-    PlanId.BUSINESS: Plan(
-        plan_id=PlanId.BUSINESS,
-        targets_limit=100,
-        scans_per_month_limit=None,
-        active_tier_allowed=True,
-        share_links_allowed=True,
-        monitoring_frequency="daily+custom",
-        monitors_limit=100,
-        api_keys_limit=100,
-        api_rate_limit_per_minute=1000,
         white_label_allowed=True,
-        repo_connectors_limit=50,
+        repo_connectors_limit=10,
+        price_cents=2900,
+        currency="usd",
     ),
 }

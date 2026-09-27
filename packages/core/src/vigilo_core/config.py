@@ -75,11 +75,9 @@ class Config(BaseModel):
     additional_cors_origins: list[str] = []
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-haiku-4-5"
-    paddle_vendor_id: str | None = None
-    paddle_webhook_secret: str | None = None
-    paddle_price_id_builder: str | None = None
-    paddle_price_id_studio: str | None = None
-    paddle_price_id_business: str | None = None
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
+    stripe_price_id_pro: str | None = None
 
 
 def _default_brand_config_path() -> Path:
@@ -142,9 +140,7 @@ def config() -> Config:
         ],
         anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
         anthropic_model=os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5"),
-        paddle_vendor_id=os.environ.get("PADDLE_VENDOR_ID"),
-        paddle_webhook_secret=os.environ.get("PADDLE_WEBHOOK_SECRET"),
-        paddle_price_id_builder=os.environ.get("PADDLE_PRICE_ID_BUILDER"),
-        paddle_price_id_studio=os.environ.get("PADDLE_PRICE_ID_STUDIO"),
-        paddle_price_id_business=os.environ.get("PADDLE_PRICE_ID_BUSINESS"),
+        stripe_secret_key=os.environ.get("STRIPE_SECRET_KEY"),
+        stripe_webhook_secret=os.environ.get("STRIPE_WEBHOOK_SECRET"),
+        stripe_price_id_pro=os.environ.get("STRIPE_PRICE_ID_PRO"),
     )

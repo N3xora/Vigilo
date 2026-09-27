@@ -132,6 +132,8 @@ export interface PlanResponse {
   api_rate_limit_per_minute: number | null;
   white_label_allowed: boolean;
   repo_connectors_limit: number | null;
+  price_cents: number;
+  currency: string;
 }
 
 export interface CheckoutResponse {

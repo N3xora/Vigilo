@@ -17,41 +17,30 @@ def test_free_plan_entitlements():
     assert result.white_label_allowed is False
 
 
-def test_builder_plan_entitlements():
-    result = entitlements("builder")
-    assert result.plan_id == PlanId.BUILDER
-    assert result.targets_limit == 3
-    assert result.scans_per_month_limit == 100
-    assert result.active_tier_allowed is True
-    assert result.share_links_allowed is True
-    assert result.monitoring_frequency == "weekly"
-    assert result.monitors_limit == 3
-    assert result.api_keys_limit == 1
-    assert result.api_rate_limit_per_minute == 60
-    assert result.white_label_allowed is False
-
-
-def test_studio_plan_has_unlimited_scans():
-    result = entitlements("studio")
-    assert result.plan_id == PlanId.STUDIO
+def test_pro_plan_includes_every_capability():
+    result = entitlements("pro")
+    assert result.plan_id == PlanId.PRO
     assert result.targets_limit == 25
     assert result.scans_per_month_limit is None
+    assert result.active_tier_allowed is True
+    assert result.share_links_allowed is True
     assert result.monitoring_frequency == "daily+custom"
     assert result.monitors_limit == 25
-    assert result.white_label_allowed is False
-
-
-def test_business_plan_is_the_only_plan_with_white_label_allowed():
-    result = entitlements("business")
-    assert result.plan_id == PlanId.BUSINESS
-    assert result.targets_limit == 100
-    assert result.scans_per_month_limit is None
+    assert result.api_keys_limit == 25
+    assert result.api_rate_limit_per_minute == 300
     assert result.white_label_allowed is True
-    assert result.api_keys_limit == 100
-    assert result.api_rate_limit_per_minute == 1000
+    assert (result.price_cents, result.currency) == (2900, "usd")
 
-    for plan_id in ("free", "builder", "studio"):
-        assert entitlements(plan_id).white_label_allowed is False
+
+def test_free_plan_has_no_price():
+    assert entitlements("free").price_cents == 0
+
+
+def test_retired_plan_ids_fall_back_to_free():
+    """builder/studio/business were collapsed into Pro; an account still
+    carrying one must fail closed, not keep paid access."""
+    for retired in ("builder", "studio", "business"):
+        assert entitlements(retired).plan_id == PlanId.FREE
 
 
 def test_none_plan_id_defaults_to_free():
