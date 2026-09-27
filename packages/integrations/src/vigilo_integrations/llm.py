@@ -45,6 +45,8 @@ async def generate_remediation_text(
         "x-api-key": cfg.anthropic_api_key,
         "anthropic-version": _ANTHROPIC_VERSION,
     }
+    if cfg.anthropic_workspace_id:
+        headers["anthropic-workspace-id"] = cfg.anthropic_workspace_id
 
     try:
         async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT, transport=transport) as client:

@@ -75,6 +75,9 @@ class Config(BaseModel):
     additional_cors_origins: list[str] = []
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-haiku-4-5"
+    # Required when the API key is not scoped to an Anthropic workspace: sent as
+    # the `anthropic-workspace-id` header (Console -> Settings -> Workspaces).
+    anthropic_workspace_id: str | None = None
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None
     stripe_price_id_pro: str | None = None
@@ -143,7 +146,9 @@ def config() -> Config:
             if origin.strip()
         ],
         anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
-        anthropic_model=os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5"),
+        # `or`, not a get() default: compose passes an unset variable as "".
+        anthropic_model=os.environ.get("ANTHROPIC_MODEL") or "claude-haiku-4-5",
+        anthropic_workspace_id=os.environ.get("ANTHROPIC_WORKSPACE_ID") or None,
         stripe_secret_key=os.environ.get("STRIPE_SECRET_KEY"),
         stripe_webhook_secret=os.environ.get("STRIPE_WEBHOOK_SECRET"),
         stripe_price_id_pro=os.environ.get("STRIPE_PRICE_ID_PRO"),
