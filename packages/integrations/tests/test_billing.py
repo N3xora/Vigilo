@@ -196,3 +196,19 @@ async def test_portal_raises_when_stripe_refuses(subscription_status, portal_sta
     _, transport = _stripe_portal(subscription_status, portal_status)
     with pytest.raises(BillingProviderError):
         await create_portal_url("sub_1", "https://app.test/billing", transport=transport)
+
+
+async def test_yearly_checkout_uses_the_yearly_price(monkeypatch):
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_123")
+    monkeypatch.setenv("STRIPE_PRICE_ID_PRO", "price_monthly")
+    monkeypatch.setenv("STRIPE_PRICE_ID_PRO_YEARLY", "price_yearly")
+    config.cache_clear()
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = request.content.decode()
+        return httpx.Response(200, json={"url": "https://checkout.stripe.test/s"})
+
+    await _checkout(interval="year", transport=httpx.MockTransport(handler))
+    assert "price_yearly" in captured["body"]
+    assert price_to_plan() == {"price_monthly": "pro", "price_yearly": "pro"}

@@ -13,13 +13,20 @@ function formatLimit(value: number | null): string {
   return value === null ? "Unlimited" : String(value);
 }
 
-function formatPrice(plan: PlanResponse): string {
-  if (plan.price_cents === 0) return "Free";
-  const amount = new Intl.NumberFormat("en-US", {
+function formatAmount(plan: PlanResponse, cents: number): string {
+  return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: plan.currency.toUpperCase(),
-  }).format(plan.price_cents / 100);
-  return `${amount} / month`;
+    maximumFractionDigits: cents % 100 === 0 ? 0 : 2,
+  }).format(cents / 100);
+}
+
+function formatPrice(plan: PlanResponse): string {
+  if (plan.price_cents === 0) return "Free";
+  const monthly = `${formatAmount(plan, plan.price_cents)} / month`;
+  return plan.price_cents_yearly > 0
+    ? `${monthly} or ${formatAmount(plan, plan.price_cents_yearly)} / year`
+    : monthly;
 }
 
 function formatBool(value: boolean): string {
@@ -105,7 +112,16 @@ export default async function DashboardBillingPage({
                       {plan.plan_id !== "free" ? <ManageSubscriptionButton /> : null}
                     </div>
                   ) : plan.plan_id === "free" ? null : (
-                    <UpgradeButton planId={plan.plan_id} />
+                    <div className="flex flex-wrap gap-2">
+                      <UpgradeButton planId={plan.plan_id} label="Upgrade monthly" />
+                      {plan.price_cents_yearly > 0 ? (
+                        <UpgradeButton
+                          planId={plan.plan_id}
+                          interval="year"
+                          label="Yearly — 2 months free"
+                        />
+                      ) : null}
+                    </div>
                   )}
                 </td>
               ))}
@@ -115,7 +131,7 @@ export default async function DashboardBillingPage({
       </div>
 
       <p className="text-xs text-black/40 dark:text-white/40 max-w-prose">
-        Billed monthly through Stripe. Cancel any time with &ldquo;Manage or cancel&rdquo; &mdash;
+        Billed monthly or yearly through Stripe. Cancel any time with &ldquo;Manage or cancel&rdquo; &mdash;
         you keep Pro until the end of the period you&rsquo;ve paid for.
       </p>
     </div>

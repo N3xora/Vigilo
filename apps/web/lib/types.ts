@@ -133,6 +133,7 @@ export interface PlanResponse {
   white_label_allowed: boolean;
   repo_connectors_limit: number | null;
   price_cents: number;
+  price_cents_yearly: number;
   currency: string;
 }
 
