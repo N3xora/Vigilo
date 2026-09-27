@@ -10,6 +10,7 @@ import type {
   ApiKeyResponse,
   BrandingProfileResponse,
   CheckoutResponse,
+  PortalResponse,
   MonitorResponse,
   PdfStatusResponse,
   PlanResponse,
@@ -164,6 +165,9 @@ export const api = {
       token,
       body: JSON.stringify({ plan_id: planId }),
     }),
+
+  createPortal: (token: string) =>
+    request<PortalResponse>("/v1/billing/portal", { method: "POST", token }),
 
   createApiKey: (name: string, scopes: string[], token: string) =>
     request<ApiKeyCreateResponse>("/v1/me/api-keys", {

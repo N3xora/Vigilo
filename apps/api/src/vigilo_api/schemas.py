@@ -73,6 +73,7 @@ class PlanResponse(BaseModel):
     white_label_allowed: bool
     repo_connectors_limit: int | None
     price_cents: int
+    price_cents_yearly: int
     currency: str
 
     model_config = {"from_attributes": True}
@@ -88,10 +89,15 @@ class AccountResponse(BaseModel):
 
 class CheckoutRequest(BaseModel):
     plan_id: str
+    interval: Literal["month", "year"] = "month"
 
 
 class CheckoutResponse(BaseModel):
     checkout_url: str
+
+
+class PortalResponse(BaseModel):
+    portal_url: str
 
 
 class TargetCreate(BaseModel):

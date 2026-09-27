@@ -11,6 +11,7 @@ import pytest
 from vigilo_core.config import config
 from vigilo_integrations.billing import (
     create_checkout_url,
+    create_portal_url,
     parse_webhook_event,
     price_to_plan,
     verify_webhook_signature,
@@ -155,3 +156,43 @@ async def test_raises_when_the_secret_key_is_unset(monkeypatch):
 async def test_raises_for_a_plan_without_a_stripe_price(plan_id):
     with pytest.raises(BillingProviderError):
         await _checkout(plan_id=plan_id)
+
+
+def _stripe_portal(subscription_status: int = 200, portal_status: int = 200):
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if request.url.path.startswith("/v1/subscriptions/"):
+            return httpx.Response(subscription_status, json={"customer": "cus_123"})
+        return httpx.Response(portal_status, json={"url": "https://billing.stripe.com/p/sess"})
+
+    return calls, httpx.MockTransport(handler)
+
+
+async def test_creates_a_portal_session_for_the_subscriptions_customer():
+    calls, transport = _stripe_portal()
+
+    url = await create_portal_url("sub_1", "https://app.test/billing", transport=transport)
+
+    assert url == "https://billing.stripe.com/p/sess"
+    assert calls[0].url.path == "/v1/subscriptions/sub_1"
+    form = {k: v[0] for k, v in parse_qs(calls[1].content.decode()).items()}
+    assert form == {"customer": "cus_123", "return_url": "https://app.test/billing"}
+
+
+async def test_passes_a_configured_portal_configuration(monkeypatch):
+    monkeypatch.setenv("STRIPE_PORTAL_CONFIGURATION_ID", "bpc_123")
+    config.cache_clear()
+    calls, transport = _stripe_portal()
+
+    await create_portal_url("sub_1", "https://app.test/billing", transport=transport)
+
+    assert parse_qs(calls[1].content.decode())["configuration"] == ["bpc_123"]
+
+
+@pytest.mark.parametrize("subscription_status,portal_status", [(404, 200), (200, 400)])
+async def test_portal_raises_when_stripe_refuses(subscription_status, portal_status):
+    _, transport = _stripe_portal(subscription_status, portal_status)
+    with pytest.raises(BillingProviderError):
+        await create_portal_url("sub_1", "https://app.test/billing", transport=transport)

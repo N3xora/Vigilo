@@ -47,8 +47,10 @@ class Plan:
     repo_connectors_limit: int | None = None
     # Display price, in the smallest currency unit. What a customer is
     # actually charged is the Stripe Price behind the plan
-    # (`STRIPE_PRICE_ID_PRO`) — keep the two in step when pricing changes.
+    # (`STRIPE_PRICE_ID_PRO` / `STRIPE_PRICE_ID_PRO_YEARLY`) — keep them in
+    # step when pricing changes.
     price_cents: int = 0
+    price_cents_yearly: int = 0
     currency: str = "usd"
 
 

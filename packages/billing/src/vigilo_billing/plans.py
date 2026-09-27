@@ -41,6 +41,7 @@ PLANS: dict[PlanId, Plan] = {
         white_label_allowed=True,
         repo_connectors_limit=10,
         price_cents=2900,
+        price_cents_yearly=29000,
         currency="usd",
     ),
 }

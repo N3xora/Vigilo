@@ -27,6 +27,8 @@ from vigilo_core.config import config
 from vigilo_integrations.errors import BillingProviderError
 
 _CHECKOUT_SESSIONS_URL = "https://api.stripe.com/v1/checkout/sessions"
+_SUBSCRIPTIONS_URL = "https://api.stripe.com/v1/subscriptions"
+_PORTAL_SESSIONS_URL = "https://api.stripe.com/v1/billing_portal/sessions"
 _REQUEST_TIMEOUT = 15.0
 # Stripe's own libraries default to five minutes.
 _SIGNATURE_TOLERANCE_SECONDS = 300
@@ -35,7 +37,8 @@ _SIGNATURE_TOLERANCE_SECONDS = 300
 def price_to_plan() -> dict[str, str]:
     """Stripe price id → Vigilo plan id, for `interpret_webhook_event()`."""
     cfg = config()
-    return {cfg.stripe_price_id_pro: "pro"} if cfg.stripe_price_id_pro else {}
+    prices = (cfg.stripe_price_id_pro, cfg.stripe_price_id_pro_yearly)
+    return {price: "pro" for price in prices if price}
 
 
 def verify_webhook_signature(
@@ -86,15 +89,19 @@ async def create_checkout_url(
     account_reference: str,
     success_url: str,
     cancel_url: str,
+    interval: str = "month",
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> str:
     cfg = config()
     if not cfg.stripe_secret_key:
         raise BillingProviderError("Stripe is not configured (missing secret key)")
 
-    price_id = cfg.stripe_price_id_pro if plan_id == "pro" else None
+    pro_prices = {"month": cfg.stripe_price_id_pro, "year": cfg.stripe_price_id_pro_yearly}
+    price_id = pro_prices.get(interval) if plan_id == "pro" else None
     if not price_id:
-        raise BillingProviderError("no Stripe price configured for this plan", plan_id=plan_id)
+        raise BillingProviderError(
+            "no Stripe price configured for this plan", plan_id=plan_id, interval=interval
+        )
 
     form = {
         "mode": "subscription",
@@ -126,4 +133,49 @@ async def create_checkout_url(
     url = response.json().get("url")
     if not url:
         raise BillingProviderError("Stripe returned no checkout URL")
+    return url
+
+
+async def create_portal_url(
+    provider_subscription_id: str,
+    return_url: str,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> str:
+    """A Stripe-hosted Customer Portal session for the customer behind a
+    subscription: cancel (at period end), update the card, download
+    invoices. Vigilo stores only the subscription id, so the customer is
+    looked up from it first."""
+    cfg = config()
+    if not cfg.stripe_secret_key:
+        raise BillingProviderError("Stripe is not configured (missing secret key)")
+    auth = (cfg.stripe_secret_key, "")
+
+    try:
+        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT, transport=transport) as client:
+            subscription = await client.get(
+                f"{_SUBSCRIPTIONS_URL}/{provider_subscription_id}", auth=auth
+            )
+            if subscription.status_code >= 400:
+                raise BillingProviderError(
+                    "Stripe could not find the subscription",
+                    status_code=subscription.status_code,
+                )
+            customer = subscription.json().get("customer")
+            if not isinstance(customer, str):
+                raise BillingProviderError("Stripe subscription has no customer")
+
+            form = {"customer": customer, "return_url": return_url}
+            if cfg.stripe_portal_configuration_id:
+                form["configuration"] = cfg.stripe_portal_configuration_id
+            portal = await client.post(_PORTAL_SESSIONS_URL, data=form, auth=auth)
+    except httpx.HTTPError as exc:
+        raise BillingProviderError("Stripe request failed") from exc
+
+    if portal.status_code >= 400:
+        raise BillingProviderError(
+            "Stripe rejected the portal session", status_code=portal.status_code
+        )
+    url = portal.json().get("url")
+    if not url:
+        raise BillingProviderError("Stripe returned no portal URL")
     return url

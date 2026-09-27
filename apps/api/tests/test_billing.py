@@ -257,3 +257,44 @@ async def test_webhook_cancellation_resets_the_account_to_free(client):
     async with session_scope() as session:
         updated = await get_account_by_id(session, account.id)
     assert updated.plan_id == "free"
+
+
+async def test_portal_is_404_without_a_subscription(client):
+    async with session_scope() as session:
+        account = await get_or_create_account(session, email="portal-none@example.com")
+    app.dependency_overrides[require_account] = lambda: account
+
+    response = await client.post("/v1/billing/portal")
+
+    assert response.status_code == 404
+
+
+async def test_portal_opens_for_the_callers_own_subscription(client, monkeypatch):
+    seen: list[str] = []
+
+    def stripe(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        if request.url.path.startswith("/v1/subscriptions/"):
+            return httpx.Response(200, json={"customer": "cus_portal"})
+        return httpx.Response(200, json={"url": "https://billing.stripe.com/p/sess"})
+
+    monkeypatch.setattr(
+        billing_router,
+        "create_portal_url",
+        functools.partial(billing_router.create_portal_url, transport=httpx.MockTransport(stripe)),
+    )
+    async with session_scope() as session:
+        account = await get_or_create_account(session, email="portal-owner@example.com")
+    await _post_webhook(
+        client,
+        _subscription_event(
+            "customer.subscription.created", "sub_portal_owner", "portal-owner@example.com"
+        ),
+    )
+    app.dependency_overrides[require_account] = lambda: account
+
+    response = await client.post("/v1/billing/portal")
+
+    assert response.status_code == 200
+    assert response.json()["portal_url"] == "https://billing.stripe.com/p/sess"
+    assert seen[0] == "/v1/subscriptions/sub_portal_owner"

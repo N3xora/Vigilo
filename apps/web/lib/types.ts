@@ -140,6 +140,10 @@ export interface CheckoutResponse {
   checkout_url: string;
 }
 
+export interface PortalResponse {
+  portal_url: string;
+}
+
 export type VerificationMethod = "dns_txt" | "wellknown_file" | "meta_tag" | "email";
 
 export interface VerificationInitiateResponse {

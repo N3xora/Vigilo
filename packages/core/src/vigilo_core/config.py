@@ -78,6 +78,10 @@ class Config(BaseModel):
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None
     stripe_price_id_pro: str | None = None
+    stripe_price_id_pro_yearly: str | None = None
+    # Optional: a specific Customer Portal configuration (bpc_...); Stripe's
+    # default configuration is used when unset.
+    stripe_portal_configuration_id: str | None = None
 
 
 def _default_brand_config_path() -> Path:
@@ -143,4 +147,6 @@ def config() -> Config:
         stripe_secret_key=os.environ.get("STRIPE_SECRET_KEY"),
         stripe_webhook_secret=os.environ.get("STRIPE_WEBHOOK_SECRET"),
         stripe_price_id_pro=os.environ.get("STRIPE_PRICE_ID_PRO"),
+        stripe_price_id_pro_yearly=os.environ.get("STRIPE_PRICE_ID_PRO_YEARLY"),
+        stripe_portal_configuration_id=os.environ.get("STRIPE_PORTAL_CONFIGURATION_ID"),
     )

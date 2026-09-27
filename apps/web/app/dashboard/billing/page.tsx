@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { api } from "../../../lib/api";
 import type { PlanResponse } from "../../../lib/types";
 import { UpgradeButton } from "../../../components/dashboard/UpgradeButton";
+import { ManageSubscriptionButton } from "../../../components/dashboard/ManageSubscriptionButton";
 
 const JWT_TEMPLATE = process.env.NEXT_PUBLIC_CLERK_JWT_TEMPLATE ?? "vigilo-api";
 
@@ -99,7 +100,10 @@ export default async function DashboardBillingPage({
               {sortedPlans.map((plan) => (
                 <td key={plan.plan_id} className="py-3 px-4">
                   {plan.plan_id === currentPlanId ? (
-                    <span className="text-xs text-black/50 dark:text-white/50">Current plan</span>
+                    <div className="space-y-2">
+                      <span className="text-xs text-black/50 dark:text-white/50">Current plan</span>
+                      {plan.plan_id !== "free" ? <ManageSubscriptionButton /> : null}
+                    </div>
                   ) : plan.plan_id === "free" ? null : (
                     <UpgradeButton planId={plan.plan_id} />
                   )}
@@ -111,8 +115,8 @@ export default async function DashboardBillingPage({
       </div>
 
       <p className="text-xs text-black/40 dark:text-white/40 max-w-prose">
-        Billed monthly through Stripe. To cancel, email support and we&rsquo;ll stop the next
-        renewal.
+        Billed monthly through Stripe. Cancel any time with &ldquo;Manage or cancel&rdquo; &mdash;
+        you keep Pro until the end of the period you&rsquo;ve paid for.
       </p>
     </div>
   );

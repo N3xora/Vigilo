@@ -15,12 +15,17 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 
 from vigilo_api.deps import AccountDep, SessionDep
-from vigilo_api.schemas import CheckoutRequest, CheckoutResponse, PlanResponse
+from vigilo_api.schemas import CheckoutRequest, CheckoutResponse, PlanResponse, PortalResponse
 from vigilo_billing import PLANS, UnrecognizedWebhookEvent, interpret_webhook_event
 from vigilo_core.config import config
-from vigilo_identity.repository import get_account_by_email, upsert_subscription
+from vigilo_identity.repository import (
+    get_account_by_email,
+    get_subscription_by_account,
+    upsert_subscription,
+)
 from vigilo_integrations.billing import (
     create_checkout_url,
+    create_portal_url,
     parse_webhook_event,
     price_to_plan,
     verify_webhook_signature,
@@ -44,8 +49,25 @@ async def create_checkout(body: CheckoutRequest, account: AccountDep) -> Checkou
         str(account.id),
         success_url=f"{billing_page}?checkout=success",
         cancel_url=billing_page,
+        interval=body.interval,
     )
     return CheckoutResponse(checkout_url=checkout_url)
+
+
+@router.post("/portal", response_model=PortalResponse)
+async def create_portal(account: AccountDep, session: SessionDep) -> PortalResponse:
+    """Self-service subscription management (cancel, card, invoices) on
+    Stripe's hosted Customer Portal, scoped to the caller's own latest
+    Stripe subscription — never one named by the client."""
+    subscription = await get_subscription_by_account(session, account.id)
+    if subscription is None or subscription.provider != "stripe":
+        raise HTTPException(status_code=404, detail="no subscription to manage")
+
+    portal_url = await create_portal_url(
+        subscription.provider_subscription_id,
+        return_url=f"{config().web_app_url or ''}/dashboard/billing",
+    )
+    return PortalResponse(portal_url=portal_url)
 
 
 @plans_router.get("/plans", response_model=list[PlanResponse])
