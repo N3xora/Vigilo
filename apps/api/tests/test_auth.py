@@ -66,3 +66,25 @@ def test_a_token_missing_the_subject_claim_is_rejected():
 
     with pytest.raises(ClerkAuthError):
         verify_clerk_jwt(token, get_signing_key=_fake_get_signing_key)
+
+
+def test_flat_org_claims_from_a_jwt_template():
+    token = _make_token(email="a@example.com", org_id="org_1", org_role="org:admin")
+
+    claims = verify_clerk_jwt(token, get_signing_key=_fake_get_signing_key)
+
+    assert (claims.org_id, claims.org_role) == ("org_1", "org:admin")
+
+
+def test_nested_org_claims_from_a_default_session_token():
+    token = _make_token(o={"id": "org_2", "rol": "member"})
+
+    claims = verify_clerk_jwt(token, get_signing_key=_fake_get_signing_key)
+
+    assert (claims.org_id, claims.org_role) == ("org_2", "org:member")
+
+
+def test_no_org_claims_means_a_personal_session():
+    claims = verify_clerk_jwt(_make_token(), get_signing_key=_fake_get_signing_key)
+
+    assert (claims.org_id, claims.org_role) == (None, None)

@@ -18,8 +18,16 @@ class Account(BaseModel):
     data_region: str | None
     clerk_user_id: str | None
     created_at: datetime
+    clerk_org_id: str | None = None
+    contact_email: str | None = None
 
     model_config = {"from_attributes": True}
+
+    @property
+    def notification_email(self) -> str:
+        """Where mail for this account goes: an org account's contact email,
+        otherwise the account's own email."""
+        return self.contact_email or self.email
 
 
 class Subscription(BaseModel):
