@@ -46,19 +46,31 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-      # No `minio` service container here (unlike postgres/redis above):
-      # MinIO's 2025 licensing change pulled every free/anonymous image tag
-      # across Docker Hub, Bitnami and quay.io — `docker.io/minio/minio`
-      # now needs an authenticated pull (DOCKERHUB_USERNAME/DOCKERHUB_TOKEN
-      # repo secrets), and GitHub Actions service containers can't run
-      # `docker login` before their own pull. Logged in and started as a
-      # manual `docker run` step below instead.
+      # adobe/s3mock, not minio: MinIO's 2025 licensing change pulled every
+      # free/anonymous image tag for it across Docker Hub, Bitnami and
+      # quay.io (confirmed against a real, authenticated Docker Hub login —
+      # the repository itself is gone, not merely access-gated), and
+      # localstack/localstack now refuses to start at all without a paid
+      # license token. s3mock is a real, unauthenticated S3-API server
+      # (verified locally: a genuine put_object/get_object round trip
+      # against it succeeds) and starts from its default command, so it
+      # fits the declarative `services:` form the way minio never could
+      # here (GitHub Actions service containers can't override `command:`,
+      # and minio's image needs an explicit `server /data`).
+      s3mock:
+        image: adobe/s3mock:latest
+        ports: ["9090:9090"]
+        options: >-
+          --health-cmd "wget -q -O /dev/null http://localhost:9090/"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       DATABASE_URL: postgresql://vigilo:vigilo-dev-secret@localhost:5432/vigilo
       REDIS_URL: redis://localhost:6379/0
-      OBJECT_STORE_ENDPOINT: http://localhost:9000
-      OBJECT_STORE_ACCESS_KEY: vigilo
-      OBJECT_STORE_SECRET_KEY: vigilo-dev-secret
+      OBJECT_STORE_ENDPOINT: http://localhost:9090
+      OBJECT_STORE_ACCESS_KEY: test
+      OBJECT_STORE_SECRET_KEY: test
       OBJECT_STORE_BUCKET: vigilo-evidence
       # render_pdf() reads this to build the Playwright navigation URL — CI
       # never launches a real browser (render_pdf's own tests inject a fake
@@ -66,30 +78,11 @@ jobs:
       WEB_APP_URL: http://localhost:3000
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Start MinIO
-        run: |
-          docker run -d --name minio \
-            -p 9000:9000 -p 9001:9001 \
-            -e MINIO_ROOT_USER=vigilo \
-            -e MINIO_ROOT_PASSWORD=vigilo-dev-secret \
-            minio/minio:latest server /data --console-address ":9001"
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
       - run: uv python install 3.11
       - run: uv sync --all-packages
-      - name: Wait for MinIO
-        run: |
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:9000/minio/health/live && exit 0
-            sleep 1
-          done
-          echo "MinIO did not become healthy in time" >&2
-          exit 1
       - name: Create the evidence bucket
         run: |
           uv run python -c "
@@ -97,9 +90,9 @@ jobs:
           from botocore.exceptions import ClientError
           client = boto3.client(
               's3',
-              endpoint_url='http://localhost:9000',
-              aws_access_key_id='vigilo',
-              aws_secret_access_key='vigilo-dev-secret',
+              endpoint_url='http://localhost:9090',
+              aws_access_key_id='test',
+              aws_secret_access_key='test',
               region_name='us-east-1',
           )
           try:
