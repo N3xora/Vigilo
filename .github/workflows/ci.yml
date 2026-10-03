@@ -46,21 +46,13 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-      minio:
-        # Not `minio/minio` — GitHub Actions service containers can't
-        # override `command:`, and that image's default entrypoint requires
-        # one. Bitnami's image starts the server correctly from env vars
-        # alone.
-        image: bitnami/minio:latest
-        env:
-          MINIO_ROOT_USER: vigilo
-          MINIO_ROOT_PASSWORD: vigilo-dev-secret
-        ports: ["9000:9000"]
-        options: >-
-          --health-cmd "curl -f http://localhost:9000/minio/health/live"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+      # No `minio` service container here (unlike postgres/redis above):
+      # MinIO's 2025 licensing change pulled every free/anonymous image tag
+      # across Docker Hub, Bitnami and quay.io — `docker.io/minio/minio`
+      # now needs an authenticated pull (DOCKERHUB_USERNAME/DOCKERHUB_TOKEN
+      # repo secrets), and GitHub Actions service containers can't run
+      # `docker login` before their own pull. Logged in and started as a
+      # manual `docker run` step below instead.
     env:
       DATABASE_URL: postgresql://vigilo:vigilo-dev-secret@localhost:5432/vigilo
       REDIS_URL: redis://localhost:6379/0
@@ -74,11 +66,30 @@ jobs:
       WEB_APP_URL: http://localhost:3000
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio \
+            -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER=vigilo \
+            -e MINIO_ROOT_PASSWORD=vigilo-dev-secret \
+            minio/minio:latest server /data --console-address ":9001"
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
       - run: uv python install 3.11
       - run: uv sync --all-packages
+      - name: Wait for MinIO
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9000/minio/health/live && exit 0
+            sleep 1
+          done
+          echo "MinIO did not become healthy in time" >&2
+          exit 1
       - name: Create the evidence bucket
         run: |
           uv run python -c "
@@ -156,6 +167,17 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://vigilo:vigilo-dev-secret@localhost:5432/vigilo
+      # run_scan_job() unconditionally calls put_evidence_bundle(), which
+      # raises an uncaught StructuredError if object storage isn't
+      # configured at all — these point at nothing reachable (no minio
+      # service here, unlike the `test` job), but that's enough: a real
+      # connection failure is caught as ObjectStoreError and logged as a
+      # warning (jobs.py), which this suite's own assertions (tier and
+      # findings only, never bundle_id) don't depend on either way.
+      OBJECT_STORE_ENDPOINT: http://localhost:9000
+      OBJECT_STORE_ACCESS_KEY: vigilo
+      OBJECT_STORE_SECRET_KEY: vigilo-dev-secret
+      OBJECT_STORE_BUCKET: vigilo-evidence
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
