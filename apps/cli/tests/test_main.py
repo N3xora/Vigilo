@@ -99,6 +99,23 @@ def test_run_prints_sarif_for_a_scan(_fake_scan, capsys):
     assert report["runs"][0]["tool"]["driver"]["name"] == "Vigilo"
 
 
+def test_json_out_writes_a_report_alongside_sarif_on_stdout(_fake_scan, tmp_path, capsys):
+    """--json-out is independent of --sarif/--json on stdout, so a single
+    scan can produce both the SARIF upload and a JSON report for a PR
+    comment."""
+    out_path = tmp_path / "report.json"
+    with pytest.raises(SystemExit) as exc_info:
+        run(["scan", "https://safe.test", "--sarif", "--json-out", str(out_path)])
+
+    assert exc_info.value.code == 0
+    sarif_report = json.loads(capsys.readouterr().out)
+    assert sarif_report["version"] == "2.1.0"
+
+    payload = json.loads(out_path.read_text())
+    assert payload["target_origin"] == "https://safe.test"
+    assert len(payload["findings"]) == 57
+
+
 def test_json_and_sarif_are_mutually_exclusive():
     parser = build_parser()
     with pytest.raises(SystemExit):
@@ -122,6 +139,22 @@ def test_fail_on_exits_zero_when_the_threshold_is_not_breached(_fake_scan, capsy
     # The fixture bundle has no critical finding (no leaked credentials,
     # no broken TLS) — only critical should trip the gate, and it doesn't.
     assert exc_info.value.code == 0
+
+
+def test_render_pr_comment_reads_a_json_out_file_and_prints_markdown(_fake_scan, tmp_path, capsys):
+    json_path = tmp_path / "report.json"
+    with pytest.raises(SystemExit) as exc_info:
+        run(["scan", "https://safe.test", "--json-out", str(json_path)])
+    assert exc_info.value.code == 0
+    capsys.readouterr()
+
+    with pytest.raises(SystemExit) as exc_info:
+        run(["render-pr-comment", "--json-in", str(json_path)])
+
+    assert exc_info.value.code == 0
+    markdown = capsys.readouterr().out
+    assert markdown.startswith("<!-- vigilo-scan-comment -->")
+    assert "https://safe.test" in markdown
 
 
 def test_fail_on_is_absent_by_default_regardless_of_findings(_fake_scan, capsys):

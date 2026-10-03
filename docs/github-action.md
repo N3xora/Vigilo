@@ -30,7 +30,20 @@ jobs:
         uses: <org>/vigilo/.github/actions/scan@main
         with:
           target-url: ${{ steps.deploy.outputs.preview-url }}
-          fail-on: high   # optional — omit to never fail the build
+          fail-on: high        # optional — omit to never fail the build
+          post-comment: true   # optional — also post a PR comment summary
+```
+
+To post a PR comment, also grant the job comment permission:
+
+```yaml
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write   # required only when post-comment: true
+    steps:
+      # ...
 ```
 
 ## Inputs
@@ -39,17 +52,35 @@ jobs:
 |---|---|---|
 | `target-url` | Yes | The deployed URL to scan. Must already be live and reachable from GitHub's runners when the step executes. |
 | `fail-on` | No | `critical`, `high`, `medium`, or `low`. The job fails if any failed finding is at or above this severity. Omit to always pass regardless of findings — the SARIF upload still happens either way. |
+| `post-comment` | No | `true` to post (or update in place) a single PR comment summarizing the findings, alongside the SARIF upload. Only has effect on a `pull_request` event; needs `pull-requests: write` on the calling job. Default `false`. |
+
+## PR comments
+
+When `post-comment: true` and the workflow run is triggered by a
+`pull_request` event, the action renders the same scan's JSON report
+(`apps/cli`'s `--json-out`, never a second scan — see "What it does" below)
+as markdown via `vigilo render-pr-comment` and posts it to the PR. A hidden
+marker comment (`<!-- vigilo-scan-comment -->`) lets it find and update its
+own prior comment on later pushes instead of piling up a new one each time
+— see `packages/reporting/src/vigilo_reporting/pr_comment.py`'s module
+docstring. Only `FAILED` findings are tabulated, with each one's
+`remediation_template` in a collapsed details block; `INCONCLUSIVE`
+findings are counted but not tabulated — the same reportable/suppressed
+split `build_sarif_report` already applies, just rendered as markdown
+instead of SARIF.
 
 ## What it does
 
-One live scan produces both the SARIF file and the pass/fail decision —
-`apps/cli`'s `vigilo scan <url> --sarif --fail-on <level>` reads its own
-single result for both, never two separate scans of the same target (a
-second scan could legitimately return different results, since the target
-is live). The SARIF is uploaded to GitHub Code Scanning via
-`github/codeql-action/upload-sarif@v3` *before* the action enforces
-`fail-on` — findings are always visible in the Security tab even on a
-failed build, never hidden by early job termination.
+One live scan produces the SARIF file, the pass/fail decision, and (when
+`post-comment: true`) the JSON report the PR comment is rendered from —
+`apps/cli`'s `vigilo scan <url> --sarif --fail-on <level> --json-out
+<path>` reads its own single result for all three, never two separate
+scans of the same target (a second scan could legitimately return
+different results, since the target is live). The SARIF is uploaded to
+GitHub Code Scanning via `github/codeql-action/upload-sarif@v3` *before*
+the action enforces `fail-on` — findings are always visible in the
+Security tab even on a failed build, never hidden by early job
+termination.
 
 Only `FAILED`/`INCONCLUSIVE` findings become SARIF results (never
 `PASSED`/`NOT_APPLICABLE`) — see
