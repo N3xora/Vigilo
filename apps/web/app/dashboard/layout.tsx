@@ -5,14 +5,12 @@ import { DashboardNav } from "../../components/dashboard/DashboardNav";
 
 export default async function DashboardLayout({ children }: LayoutProps<"/dashboard">) {
   const { userId } = await auth();
-  if (!userId) {
-    redirect("/sign-in");
-  }
+  if (!userId) redirect("/sign-in");
 
   return (
-    <>
+    <div className="min-h-screen bg-background">
       <Header nav={<DashboardNav />} />
-      <main className="mx-auto max-w-2xl px-6 py-10 space-y-6">{children}</main>
-    </>
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+    </div>
   );
 }
