@@ -22,7 +22,7 @@ insecure configuration (e.g. skipping `docs/self-hosting.md`'s guidance).
 
 ## Reporting a vulnerability
 
-Email **security@vigilo.io** with a description, reproduction steps, and
+Email **security@onenexora.com** with a description, reproduction steps, and
 the affected version/commit. Encrypt anything sensitive if you'd like —
 we don't currently publish a PGP key, so ask and we'll set one up.
 

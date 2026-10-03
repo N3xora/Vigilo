@@ -43,7 +43,7 @@ from vigilo_security.egress_guard import Resolver, validate_and_pin
 
 _REQUEST_TIMEOUT = 10.0
 _MAX_RESPONSE_BYTES = 64 * 1024
-_USER_AGENT = "VigiloScanner/0.1 (+https://vigilo.io/scanner)"
+_USER_AGENT = "VigiloScanner/0.1 (+https://vigilo.onenexora.com/scanner)"
 
 _SUPABASE_URL_PATTERN = re.compile(r"https://([a-z0-9]{20})\.supabase\.co")
 _JWT_PATTERN = re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
