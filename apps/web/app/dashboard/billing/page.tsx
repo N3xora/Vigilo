@@ -3,13 +3,30 @@ import { auth } from "@clerk/nextjs/server";
 import { api } from "../../../lib/api";
 import type { PlanResponse } from "../../../lib/types";
 import { UpgradeButton } from "../../../components/dashboard/UpgradeButton";
+import { ManageSubscriptionButton } from "../../../components/dashboard/ManageSubscriptionButton";
 
 const JWT_TEMPLATE = process.env.NEXT_PUBLIC_CLERK_JWT_TEMPLATE ?? "vigilo-api";
 
-const PLAN_ORDER = ["free", "builder", "studio", "business"];
+const PLAN_ORDER = ["free", "pro"];
 
 function formatLimit(value: number | null): string {
   return value === null ? "Unlimited" : String(value);
+}
+
+function formatAmount(plan: PlanResponse, cents: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: plan.currency.toUpperCase(),
+    maximumFractionDigits: cents % 100 === 0 ? 0 : 2,
+  }).format(cents / 100);
+}
+
+function formatPrice(plan: PlanResponse): string {
+  if (plan.price_cents === 0) return "Free";
+  const monthly = `${formatAmount(plan, plan.price_cents)} / month`;
+  return plan.price_cents_yearly > 0
+    ? `${monthly} or ${formatAmount(plan, plan.price_cents_yearly)} / year`
+    : monthly;
 }
 
 function formatBool(value: boolean): string {
@@ -17,6 +34,7 @@ function formatBool(value: boolean): string {
 }
 
 const ROWS: { label: string; render: (plan: PlanResponse) => string }[] = [
+  { label: "Price", render: formatPrice },
   { label: "Targets", render: (p) => formatLimit(p.targets_limit) },
   { label: "Scans / month", render: (p) => formatLimit(p.scans_per_month_limit) },
   { label: "Active-tier scanning", render: (p) => formatBool(p.active_tier_allowed) },
@@ -31,7 +49,12 @@ const ROWS: { label: string; render: (plan: PlanResponse) => string }[] = [
   { label: "White-label reports", render: (p) => formatBool(p.white_label_allowed) },
 ];
 
-export default async function DashboardBillingPage() {
+export default async function DashboardBillingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ checkout?: string }>;
+}) {
+  const { checkout } = await searchParams;
   const { getToken } = await auth();
   const token = await getToken({ template: JWT_TEMPLATE });
   if (!token) {
@@ -47,6 +70,12 @@ export default async function DashboardBillingPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Billing</h1>
+
+      {checkout === "success" ? (
+        <p className="rounded-md border border-black/10 dark:border-white/20 p-3 text-sm">
+          Payment received — your plan updates within a minute. Refresh if it still shows Free.
+        </p>
+      ) : null}
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
@@ -78,9 +107,21 @@ export default async function DashboardBillingPage() {
               {sortedPlans.map((plan) => (
                 <td key={plan.plan_id} className="py-3 px-4">
                   {plan.plan_id === currentPlanId ? (
-                    <span className="text-xs text-black/50 dark:text-white/50">Current plan</span>
+                    <div className="space-y-2">
+                      <span className="text-xs text-black/50 dark:text-white/50">Current plan</span>
+                      {plan.plan_id !== "free" ? <ManageSubscriptionButton /> : null}
+                    </div>
                   ) : plan.plan_id === "free" ? null : (
-                    <UpgradeButton planId={plan.plan_id} />
+                    <div className="flex flex-wrap gap-2">
+                      <UpgradeButton planId={plan.plan_id} label="Upgrade monthly" />
+                      {plan.price_cents_yearly > 0 ? (
+                        <UpgradeButton
+                          planId={plan.plan_id}
+                          interval="year"
+                          label="Yearly — 2 months free"
+                        />
+                      ) : null}
+                    </div>
                   )}
                 </td>
               ))}
@@ -90,7 +131,8 @@ export default async function DashboardBillingPage() {
       </div>
 
       <p className="text-xs text-black/40 dark:text-white/40 max-w-prose">
-        Prices are shown on the checkout page after clicking Upgrade.
+        Billed monthly or yearly through Stripe. Cancel any time with &ldquo;Manage or cancel&rdquo; &mdash;
+        you keep Pro until the end of the period you&rsquo;ve paid for.
       </p>
     </div>
   );

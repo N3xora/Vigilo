@@ -10,6 +10,7 @@ import type {
   ApiKeyResponse,
   BrandingProfileResponse,
   CheckoutResponse,
+  PortalResponse,
   MonitorResponse,
   PdfStatusResponse,
   PlanResponse,
@@ -158,12 +159,15 @@ export const api = {
 
   listPlans: () => request<PlanResponse[]>("/v1/plans"),
 
-  createCheckout: (planId: string, token: string) =>
+  createCheckout: (planId: string, interval: "month" | "year", token: string) =>
     request<CheckoutResponse>("/v1/billing/checkout", {
       method: "POST",
       token,
-      body: JSON.stringify({ plan_id: planId }),
+      body: JSON.stringify({ plan_id: planId, interval }),
     }),
+
+  createPortal: (token: string) =>
+    request<PortalResponse>("/v1/billing/portal", { method: "POST", token }),
 
   createApiKey: (name: string, scopes: string[], token: string) =>
     request<ApiKeyCreateResponse>("/v1/me/api-keys", {

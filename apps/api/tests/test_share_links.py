@@ -20,9 +20,9 @@ async def _make_completed_scan(email: str = "owner@example.com"):
         await upsert_subscription(
             session,
             account_id=account.id,
-            plan_id="builder",
+            plan_id="pro",
             status="active",
-            provider="paddle",
+            provider="stripe",
             provider_subscription_id=f"sub_{email}",
             current_period_end=None,
         )

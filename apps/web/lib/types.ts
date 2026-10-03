@@ -132,10 +132,17 @@ export interface PlanResponse {
   api_rate_limit_per_minute: number | null;
   white_label_allowed: boolean;
   repo_connectors_limit: number | null;
+  price_cents: number;
+  price_cents_yearly: number;
+  currency: string;
 }
 
 export interface CheckoutResponse {
   checkout_url: string;
+}
+
+export interface PortalResponse {
+  portal_url: string;
 }
 
 export type VerificationMethod = "dns_txt" | "wellknown_file" | "meta_tag" | "email";

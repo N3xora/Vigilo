@@ -63,9 +63,9 @@ async def _upgrade_to_studio(session, account_id: uuid.UUID, email: str):
     await upsert_subscription(
         session,
         account_id=account_id,
-        plan_id="studio",
+        plan_id="pro",
         status="active",
-        provider="paddle",
+        provider="stripe",
         provider_subscription_id=f"sub_{email}",
         current_period_end=None,
     )
@@ -140,9 +140,9 @@ async def test_submit_scan_grants_active_tier_for_a_returning_verified_target(cl
         await upsert_subscription(
             session,
             account_id=account.id,
-            plan_id="builder",
+            plan_id="pro",
             status="active",
-            provider="paddle",
+            provider="stripe",
             provider_subscription_id="sub_verified_owner",
             current_period_end=None,
         )

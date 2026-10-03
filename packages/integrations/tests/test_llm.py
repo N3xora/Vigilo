@@ -78,3 +78,43 @@ async def test_raises_when_not_configured(monkeypatch):
 
     with pytest.raises(LlmProviderError):
         await generate_remediation_text(prompt="fix this")
+
+
+async def test_sends_workspace_header_when_configured(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_WORKSPACE_ID", "wrkspc_123")
+    config.cache_clear()
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(request.headers)
+        return httpx.Response(200, json={"content": [{"type": "text", "text": "ok"}]})
+
+    await generate_remediation_text(prompt="p", transport=httpx.MockTransport(handler))
+    assert captured["anthropic-workspace-id"] == "wrkspc_123"
+
+
+async def test_no_workspace_header_by_default():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(request.headers)
+        return httpx.Response(200, json={"content": [{"type": "text", "text": "ok"}]})
+
+    await generate_remediation_text(prompt="p", transport=httpx.MockTransport(handler))
+    assert "anthropic-workspace-id" not in captured
+
+
+async def test_empty_model_env_falls_back_to_default(monkeypatch):
+    """Compose passes an unset ANTHROPIC_MODEL as "", which must not become the model."""
+    monkeypatch.setenv("ANTHROPIC_MODEL", "")
+    config.cache_clear()
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+
+        captured.update(json.loads(request.content))
+        return httpx.Response(200, json={"content": [{"type": "text", "text": "ok"}]})
+
+    await generate_remediation_text(prompt="p", transport=httpx.MockTransport(handler))
+    assert captured["model"] == "claude-haiku-4-5"

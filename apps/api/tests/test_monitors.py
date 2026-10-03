@@ -15,14 +15,14 @@ from vigilo_identity.repository import (
 from vigilo_persistence import session_scope
 
 
-async def _upgrade_to_builder(account_id, email: str):
+async def _upgrade_to_pro(account_id, email: str):
     async with session_scope() as session:
         await upsert_subscription(
             session,
             account_id=account_id,
-            plan_id="builder",
+            plan_id="pro",
             status="active",
-            provider="paddle",
+            provider="stripe",
             provider_subscription_id=f"sub_{email}",
             current_period_end=None,
         )
@@ -30,12 +30,12 @@ async def _upgrade_to_builder(account_id, email: str):
 
 
 @pytest_asyncio.fixture
-async def builder_account():
+async def pro_account():
     async with session_scope() as session:
         acc = await get_or_create_account(
             session, email="monitor-owner@example.com", clerk_user_id="user_monitor"
         )
-    acc = await _upgrade_to_builder(acc.id, acc.email)
+    acc = await _upgrade_to_pro(acc.id, acc.email)
     app.dependency_overrides[require_account] = lambda: acc
     yield acc
     app.dependency_overrides.pop(require_account, None)
@@ -64,7 +64,7 @@ async def test_create_monitor_on_the_free_plan_is_denied(client, free_account):
     assert response.json()["code"] == "QUOTA_EXCEEDED"
 
 
-async def test_create_monitor_on_builder_with_the_correct_weekly_cadence(client, builder_account):
+async def test_create_monitor_on_pro_with_a_weekly_cadence(client, pro_account):
     create_target = await client.post("/v1/targets", json={"origin": "https://example.com"})
     target_id = create_target.json()["target_id"]
 
@@ -79,19 +79,19 @@ async def test_create_monitor_on_builder_with_the_correct_weekly_cadence(client,
     assert body["enabled"] is True
 
 
-async def test_create_monitor_on_builder_with_a_non_weekly_cadence_is_rejected(
-    client, builder_account
+async def test_create_monitor_on_pro_with_a_cadence_over_a_week_is_rejected(
+    client, pro_account
 ):
     create_target = await client.post("/v1/targets", json={"origin": "https://example.com"})
     target_id = create_target.json()["target_id"]
 
-    response = await client.post(f"/v1/targets/{target_id}/monitors", json={"cadence_hours": 24})
+    response = await client.post(f"/v1/targets/{target_id}/monitors", json={"cadence_hours": 169})
 
     assert response.status_code == 422
 
 
 async def test_creating_a_monitor_twice_for_the_same_target_updates_not_duplicates(
-    client, builder_account
+    client, pro_account
 ):
     create_target = await client.post("/v1/targets", json={"origin": "https://example.com"})
     target_id = create_target.json()["target_id"]
@@ -108,27 +108,27 @@ async def test_creating_a_monitor_twice_for_the_same_target_updates_not_duplicat
     assert second.json()["quiet_start_utc"] == 22
 
 
-async def test_create_monitor_beyond_the_builder_plan_limit_is_denied(client, builder_account):
-    """Builder's `monitors_limit` (3) equals its `targets_limit` (3), so
+async def test_create_monitor_beyond_the_pro_plan_limit_is_denied(client, pro_account):
+    """Pro's `monitors_limit` (25) equals its `targets_limit` (25), so
     the normal one-target-then-one-monitor HTTP flow always hits the
-    TARGETS quota first on a 4th target — it can never actually reach the
+    TARGETS quota first on a 26th target — it can never actually reach the
     MONITORS quota through that path. To isolate the MONITORS check
-    itself, the first 3 targets+monitors are seeded directly via the
+    itself, the first 25 targets+monitors are seeded directly via the
     repository (bypassing `POST /v1/targets`' own TARGETS quota, exactly
     as Phase 6/7 established for reaching states the normal flow can't),
-    and only the 4th, denied monitor-creation call goes through the real
+    and only the 26th, denied monitor-creation call goes through the real
     HTTP endpoint under test."""
     from vigilo_monitoring.repository import create_monitor as create_monitor_row
     from vigilo_project.repository import create_target, get_or_create_default_project
 
     async with session_scope() as session:
-        project = await get_or_create_default_project(session, builder_account.id)
-        for i in range(3):
+        project = await get_or_create_default_project(session, pro_account.id)
+        for i in range(25):
             target = await create_target(session, project.id, f"https://seed{i}.example.com")
             await create_monitor_row(
                 session,
                 target_id=target.id,
-                account_id=builder_account.id,
+                account_id=pro_account.id,
                 cadence_hours=168,
                 next_run_at=datetime.now(UTC),
             )
@@ -142,7 +142,7 @@ async def test_create_monitor_beyond_the_builder_plan_limit_is_denied(client, bu
     assert response.json()["code"] == "QUOTA_EXCEEDED"
 
 
-async def test_get_target_monitor_returns_404_when_none_exists(client, builder_account):
+async def test_get_target_monitor_returns_404_when_none_exists(client, pro_account):
     create_target = await client.post("/v1/targets", json={"origin": "https://example.com"})
     target_id = create_target.json()["target_id"]
 
@@ -151,7 +151,7 @@ async def test_get_target_monitor_returns_404_when_none_exists(client, builder_a
     assert response.status_code == 404
 
 
-async def test_disable_monitor_requires_ownership(client, builder_account):
+async def test_disable_monitor_requires_ownership(client, pro_account):
     create_target = await client.post("/v1/targets", json={"origin": "https://example.com"})
     target_id = create_target.json()["target_id"]
     create_response = await client.post(
@@ -169,7 +169,7 @@ async def test_disable_monitor_requires_ownership(client, builder_account):
     assert response.status_code == 404
 
 
-async def test_disable_monitor_succeeds_for_the_owner(client, builder_account):
+async def test_disable_monitor_succeeds_for_the_owner(client, pro_account):
     create_target = await client.post("/v1/targets", json={"origin": "https://example.com"})
     target_id = create_target.json()["target_id"]
     create_response = await client.post(
@@ -183,12 +183,12 @@ async def test_disable_monitor_succeeds_for_the_owner(client, builder_account):
     assert response.json()["enabled"] is False
 
 
-async def test_disable_an_unknown_monitor_returns_404(client, builder_account):
+async def test_disable_an_unknown_monitor_returns_404(client, pro_account):
     response = await client.post(f"/v1/monitors/{uuid.uuid4()}/disable")
     assert response.status_code == 404
 
 
-async def test_score_history_returns_scans_for_the_target(client, builder_account):
+async def test_score_history_returns_scans_for_the_target(client, pro_account):
     create_target = await client.post("/v1/targets", json={"origin": "https://example.com"})
     target_id = create_target.json()["target_id"]
 
@@ -198,7 +198,7 @@ async def test_score_history_returns_scans_for_the_target(client, builder_accoun
     assert response.json() == []
 
 
-async def test_alerts_list_starts_empty_for_a_new_target(client, builder_account):
+async def test_alerts_list_starts_empty_for_a_new_target(client, pro_account):
     create_target = await client.post("/v1/targets", json={"origin": "https://example.com"})
     target_id = create_target.json()["target_id"]
 

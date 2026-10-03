@@ -14,14 +14,14 @@ from vigilo_identity.repository import (
 from vigilo_persistence import session_scope
 
 
-async def _upgrade_to_builder(account_id, email: str):
+async def _upgrade_to_pro(account_id, email: str):
     async with session_scope() as session:
         await upsert_subscription(
             session,
             account_id=account_id,
-            plan_id="builder",
+            plan_id="pro",
             status="active",
-            provider="paddle",
+            provider="stripe",
             provider_subscription_id=f"sub_{email}",
             current_period_end=None,
         )
@@ -29,12 +29,12 @@ async def _upgrade_to_builder(account_id, email: str):
 
 
 @pytest_asyncio.fixture
-async def builder_account():
+async def pro_account():
     async with session_scope() as session:
         acc = await get_or_create_account(
             session, email="apikey-owner@example.com", clerk_user_id="user_apikey"
         )
-    acc = await _upgrade_to_builder(acc.id, acc.email)
+    acc = await _upgrade_to_pro(acc.id, acc.email)
     app.dependency_overrides[require_account] = lambda: acc
     yield acc
     app.dependency_overrides.pop(require_account, None)
@@ -59,7 +59,7 @@ async def test_create_api_key_on_the_free_plan_is_denied(client, free_account):
     assert response.json()["code"] == "QUOTA_EXCEEDED"
 
 
-async def test_create_api_key_returns_the_plaintext_once(client, builder_account):
+async def test_create_api_key_returns_the_plaintext_once(client, pro_account):
     response = await client.post(
         "/v1/me/api-keys", json={"name": "CI pipeline", "scopes": ["scan:run", "scan:read"]}
     )
@@ -71,28 +71,27 @@ async def test_create_api_key_returns_the_plaintext_once(client, builder_account
     assert body["scopes"] == ["scan:run", "scan:read"]
 
 
-async def test_create_api_key_rejects_an_unknown_scope(client, builder_account):
+async def test_create_api_key_rejects_an_unknown_scope(client, pro_account):
     response = await client.post(
         "/v1/me/api-keys", json={"name": "bad scopes", "scopes": ["not:a:real:scope"]}
     )
     assert response.status_code == 422
 
 
-async def test_create_api_key_beyond_the_builder_plan_limit_is_denied(client, builder_account):
-    # Builder's api_keys_limit is 1.
-    first = await client.post(
-        "/v1/me/api-keys", json={"name": "first", "scopes": ["scan:read"]}
-    )
-    assert first.status_code == 201
+async def test_create_api_key_beyond_the_pro_plan_limit_is_denied(client, pro_account):
+    # Pro's api_keys_limit is 25.
+    for i in range(25):
+        created = await client.post(
+            "/v1/me/api-keys", json={"name": f"key {i}", "scopes": ["scan:read"]}
+        )
+        assert created.status_code == 201
 
-    second = await client.post(
-        "/v1/me/api-keys", json={"name": "second", "scopes": ["scan:read"]}
-    )
-    assert second.status_code == 429
-    assert second.json()["code"] == "QUOTA_EXCEEDED"
+    over = await client.post("/v1/me/api-keys", json={"name": "over", "scopes": ["scan:read"]})
+    assert over.status_code == 429
+    assert over.json()["code"] == "QUOTA_EXCEEDED"
 
 
-async def test_list_api_keys_never_returns_the_plaintext_or_hash(client, builder_account):
+async def test_list_api_keys_never_returns_the_plaintext_or_hash(client, pro_account):
     await client.post("/v1/me/api-keys", json={"name": "listed key", "scopes": ["scan:read"]})
 
     response = await client.get("/v1/me/api-keys")
@@ -105,7 +104,7 @@ async def test_list_api_keys_never_returns_the_plaintext_or_hash(client, builder
     assert body[0]["prefix"]
 
 
-async def test_revoke_api_key_requires_ownership(client, builder_account):
+async def test_revoke_api_key_requires_ownership(client, pro_account):
     create_response = await client.post(
         "/v1/me/api-keys", json={"name": "to revoke", "scopes": ["scan:read"]}
     )
@@ -121,7 +120,7 @@ async def test_revoke_api_key_requires_ownership(client, builder_account):
     assert response.status_code == 404
 
 
-async def test_revoke_api_key_succeeds_for_the_owner(client, builder_account):
+async def test_revoke_api_key_succeeds_for_the_owner(client, pro_account):
     create_response = await client.post(
         "/v1/me/api-keys", json={"name": "to revoke", "scopes": ["scan:read"]}
     )
@@ -133,7 +132,7 @@ async def test_revoke_api_key_succeeds_for_the_owner(client, builder_account):
     assert response.json()["revoked_at"] is not None
 
 
-async def test_revoke_an_unknown_api_key_returns_404(client, builder_account):
+async def test_revoke_an_unknown_api_key_returns_404(client, pro_account):
     response = await client.post(f"/v1/me/api-keys/{uuid.uuid4()}/revoke")
     assert response.status_code == 404
 

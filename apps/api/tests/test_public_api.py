@@ -27,7 +27,7 @@ async def _create_account_and_key(email: str, plan_id: str, scopes: list[str]):
                 account_id=account.id,
                 plan_id=plan_id,
                 status="active",
-                provider="paddle",
+                provider="stripe",
                 provider_subscription_id=f"sub_{email}",
                 current_period_end=None,
             )
@@ -52,7 +52,7 @@ async def test_public_api_rejects_an_unknown_key(client):
 
 async def test_public_api_rejects_a_revoked_key(client):
     account, raw_key = await _create_account_and_key(
-        "revoked-key@example.com", "builder", ["project:read"]
+        "revoked-key@example.com", "pro", ["project:read"]
     )
     async with session_scope() as session:
         keys = await list_api_keys_for_account(session, account.id)
@@ -64,7 +64,7 @@ async def test_public_api_rejects_a_revoked_key(client):
 
 async def test_public_api_denies_a_key_missing_the_required_scope(client):
     _account, raw_key = await _create_account_and_key(
-        "wrong-scope@example.com", "builder", ["project:read"]
+        "wrong-scope@example.com", "pro", ["project:read"]
     )
 
     response = await client.post(
@@ -78,7 +78,7 @@ async def test_public_api_denies_a_key_missing_the_required_scope(client):
 
 async def test_public_submit_scan_creates_a_real_scan_job(client):
     _account, raw_key = await _create_account_and_key(
-        "public-scan@example.com", "builder", ["scan:run"]
+        "public-scan@example.com", "pro", ["scan:run"]
     )
 
     response = await client.post(
@@ -95,7 +95,7 @@ async def test_public_submit_scan_creates_a_real_scan_job(client):
 
 async def test_public_get_scan_status_denies_access_to_another_accounts_scan(client):
     _owner, owner_key = await _create_account_and_key(
-        "scan-owner@example.com", "builder", ["scan:run", "scan:read"]
+        "scan-owner@example.com", "pro", ["scan:run", "scan:read"]
     )
     create_response = await client.post(
         "/public/v1/scans",
@@ -105,7 +105,7 @@ async def test_public_get_scan_status_denies_access_to_another_accounts_scan(cli
     scan_job_id = create_response.json()["scan_job_id"]
 
     _other, other_key = await _create_account_and_key(
-        "scan-intruder@example.com", "builder", ["scan:read"]
+        "scan-intruder@example.com", "pro", ["scan:read"]
     )
 
     response = await client.get(f"/public/v1/scans/{scan_job_id}", headers=_auth(other_key))
@@ -114,7 +114,7 @@ async def test_public_get_scan_status_denies_access_to_another_accounts_scan(cli
 
 async def test_public_get_scan_status_succeeds_for_the_owner(client):
     _account, raw_key = await _create_account_and_key(
-        "scan-status@example.com", "builder", ["scan:run", "scan:read"]
+        "scan-status@example.com", "pro", ["scan:run", "scan:read"]
     )
     create_response = await client.post(
         "/public/v1/scans",
@@ -131,7 +131,7 @@ async def test_public_get_scan_status_succeeds_for_the_owner(client):
 
 async def test_public_get_scan_report_and_findings(client):
     account, raw_key = await _create_account_and_key(
-        "public-report@example.com", "builder", ["report:read"]
+        "public-report@example.com", "pro", ["report:read"]
     )
     async with session_scope() as session:
         project = await get_or_create_default_project(session, account.id)
@@ -179,10 +179,10 @@ async def test_public_get_scan_report_and_findings(client):
 
 async def test_public_get_scan_report_sarif_requires_ownership(client):
     account, _raw_key = await _create_account_and_key(
-        "public-sarif-owner@example.com", "builder", ["report:read"]
+        "public-sarif-owner@example.com", "pro", ["report:read"]
     )
     _other_account, other_raw_key = await _create_account_and_key(
-        "public-sarif-other@example.com", "builder", ["report:read"]
+        "public-sarif-other@example.com", "pro", ["report:read"]
     )
     async with session_scope() as session:
         project = await get_or_create_default_project(session, account.id)
@@ -197,7 +197,7 @@ async def test_public_get_scan_report_sarif_requires_ownership(client):
 
 async def test_public_score_history_and_projects(client):
     account, raw_key = await _create_account_and_key(
-        "public-scores@example.com", "builder", ["report:read", "project:read"]
+        "public-scores@example.com", "pro", ["report:read", "project:read"]
     )
     async with session_scope() as session:
         project = await get_or_create_default_project(session, account.id)
@@ -217,7 +217,7 @@ async def test_public_score_history_and_projects(client):
 
 async def test_public_monitor_lifecycle(client):
     account, raw_key = await _create_account_and_key(
-        "public-monitor@example.com", "builder", ["monitor:write", "monitor:read"]
+        "public-monitor@example.com", "pro", ["monitor:write", "monitor:read"]
     )
     async with session_scope() as session:
         project = await get_or_create_default_project(session, account.id)
@@ -246,13 +246,13 @@ async def test_public_monitor_lifecycle(client):
 
 async def test_public_api_rate_limit_returns_429_with_retry_after(client):
     account, raw_key = await _create_account_and_key(
-        "public-ratelimit@example.com", "builder", ["project:read"]
+        "public-ratelimit@example.com", "pro", ["project:read"]
     )
-    # Builder's api_rate_limit_per_minute is 60 — pre-load the counter past
-    # the limit directly in Redis rather than making 60 real requests.
+    # Pro's api_rate_limit_per_minute is 300 — pre-load the counter to the
+    # limit directly in Redis rather than making 300 real requests.
     redis = Redis.from_url(config().redis_url)
     try:
-        await redis.set(f"ratelimit:{account.id}", 60, ex=60)
+        await redis.set(f"ratelimit:{account.id}", 300, ex=60)
 
         response = await client.get("/public/v1/projects", headers=_auth(raw_key))
 
@@ -272,7 +272,7 @@ async def test_scan_status_events_yields_on_every_status_change(client):
     is unused directly but its fixture is what provisions the schema this
     test writes to."""
     account, raw_key = await _create_account_and_key(
-        "public-stream@example.com", "builder", ["scan:run"]
+        "public-stream@example.com", "pro", ["scan:run"]
     )
     async with session_scope() as session:
         project = await get_or_create_default_project(session, account.id)
@@ -295,7 +295,7 @@ async def test_public_scan_stream_endpoint_returns_the_right_content_type(client
     monkeypatch.setattr(public_api_module, "_STREAM_POLL_SECONDS", 0.01)
 
     _account, raw_key = await _create_account_and_key(
-        "public-stream-http@example.com", "builder", ["scan:run", "scan:read"]
+        "public-stream-http@example.com", "pro", ["scan:run", "scan:read"]
     )
     create_response = await client.post(
         "/public/v1/scans",

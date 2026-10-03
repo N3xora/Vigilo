@@ -58,10 +58,8 @@ class EntitlementsResponse(BaseModel):
 
 
 class PlanResponse(BaseModel):
-    """Deliberately field-for-field identical to `EntitlementsResponse` and
-    deliberately price-free — `vigilo_billing.models.Plan` has no price
-    field at all (docs/build-roadmap.md's dashboard entry: the real price
-    lives only inside Paddle's own hosted checkout, never in this repo)."""
+    """`EntitlementsResponse`'s fields plus the plan's display price. The
+    amount actually charged is the Stripe Price behind the plan."""
 
     plan_id: str
     targets_limit: int | None
@@ -74,6 +72,9 @@ class PlanResponse(BaseModel):
     api_rate_limit_per_minute: int | None
     white_label_allowed: bool
     repo_connectors_limit: int | None
+    price_cents: int
+    price_cents_yearly: int
+    currency: str
 
     model_config = {"from_attributes": True}
 
@@ -88,10 +89,15 @@ class AccountResponse(BaseModel):
 
 class CheckoutRequest(BaseModel):
     plan_id: str
+    interval: Literal["month", "year"] = "month"
 
 
 class CheckoutResponse(BaseModel):
     checkout_url: str
+
+
+class PortalResponse(BaseModel):
+    portal_url: str
 
 
 class TargetCreate(BaseModel):

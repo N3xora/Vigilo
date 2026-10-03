@@ -68,13 +68,23 @@ class Config(BaseModel):
     postmark_server_token: str | None = None
     mail_from_address: str | None = None
     web_app_url: str | None = None
+    # Extra origins allowed to call the API beyond web_app_url itself (e.g.
+    # apps/web served under a second, brand-owned domain alongside its
+    # primary one) — CORS only, never used as the PDF-render navigation
+    # target web_app_url is.
+    additional_cors_origins: list[str] = []
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-haiku-4-5"
-    paddle_vendor_id: str | None = None
-    paddle_webhook_secret: str | None = None
-    paddle_price_id_builder: str | None = None
-    paddle_price_id_studio: str | None = None
-    paddle_price_id_business: str | None = None
+    # Required when the API key is not scoped to an Anthropic workspace: sent as
+    # the `anthropic-workspace-id` header (Console -> Settings -> Workspaces).
+    anthropic_workspace_id: str | None = None
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
+    stripe_price_id_pro: str | None = None
+    stripe_price_id_pro_yearly: str | None = None
+    # Optional: a specific Customer Portal configuration (bpc_...); Stripe's
+    # default configuration is used when unset.
+    stripe_portal_configuration_id: str | None = None
 
 
 def _default_brand_config_path() -> Path:
@@ -130,11 +140,18 @@ def config() -> Config:
         postmark_server_token=os.environ.get("POSTMARK_SERVER_TOKEN"),
         mail_from_address=os.environ.get("MAIL_FROM_ADDRESS"),
         web_app_url=os.environ.get("WEB_APP_URL"),
+        additional_cors_origins=[
+            origin.strip()
+            for origin in os.environ.get("ADDITIONAL_CORS_ORIGINS", "").split(",")
+            if origin.strip()
+        ],
         anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
-        anthropic_model=os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5"),
-        paddle_vendor_id=os.environ.get("PADDLE_VENDOR_ID"),
-        paddle_webhook_secret=os.environ.get("PADDLE_WEBHOOK_SECRET"),
-        paddle_price_id_builder=os.environ.get("PADDLE_PRICE_ID_BUILDER"),
-        paddle_price_id_studio=os.environ.get("PADDLE_PRICE_ID_STUDIO"),
-        paddle_price_id_business=os.environ.get("PADDLE_PRICE_ID_BUSINESS"),
+        # `or`, not a get() default: compose passes an unset variable as "".
+        anthropic_model=os.environ.get("ANTHROPIC_MODEL") or "claude-haiku-4-5",
+        anthropic_workspace_id=os.environ.get("ANTHROPIC_WORKSPACE_ID") or None,
+        stripe_secret_key=os.environ.get("STRIPE_SECRET_KEY"),
+        stripe_webhook_secret=os.environ.get("STRIPE_WEBHOOK_SECRET"),
+        stripe_price_id_pro=os.environ.get("STRIPE_PRICE_ID_PRO"),
+        stripe_price_id_pro_yearly=os.environ.get("STRIPE_PRICE_ID_PRO_YEARLY"),
+        stripe_portal_configuration_id=os.environ.get("STRIPE_PORTAL_CONFIGURATION_ID"),
     )

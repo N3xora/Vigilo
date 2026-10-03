@@ -19,7 +19,7 @@ async def _upgrade_to(account_id, email: str, plan_id: str):
             account_id=account_id,
             plan_id=plan_id,
             status="active",
-            provider="paddle",
+            provider="stripe",
             provider_subscription_id=f"sub_{email}",
             current_period_end=None,
         )
@@ -27,30 +27,29 @@ async def _upgrade_to(account_id, email: str, plan_id: str):
 
 
 @pytest_asyncio.fixture
-async def business_account():
+async def pro_account():
     async with session_scope() as session:
         acc = await get_or_create_account(
             session, email="branding-business@example.com", clerk_user_id="user_branding_biz"
         )
-    acc = await _upgrade_to(acc.id, acc.email, "business")
+    acc = await _upgrade_to(acc.id, acc.email, "pro")
     app.dependency_overrides[require_account] = lambda: acc
     yield acc
     app.dependency_overrides.pop(require_account, None)
 
 
 @pytest_asyncio.fixture
-async def studio_account():
+async def free_account():
     async with session_scope() as session:
         acc = await get_or_create_account(
-            session, email="branding-studio@example.com", clerk_user_id="user_branding_studio"
+            session, email="branding-free@example.com", clerk_user_id="user_branding_free"
         )
-    acc = await _upgrade_to(acc.id, acc.email, "studio")
     app.dependency_overrides[require_account] = lambda: acc
     yield acc
     app.dependency_overrides.pop(require_account, None)
 
 
-async def test_update_branding_profile_on_studio_is_denied(client, studio_account):
+async def test_update_branding_profile_on_free_is_denied(client, free_account):
     response = await client.put(
         "/v1/me/branding-profile", json={"logo_url": "https://example.com/logo.png"}
     )
@@ -58,7 +57,7 @@ async def test_update_branding_profile_on_studio_is_denied(client, studio_accoun
     assert response.json()["code"] == "QUOTA_EXCEEDED"
 
 
-async def test_update_branding_profile_on_business_succeeds(client, business_account):
+async def test_update_branding_profile_on_pro_succeeds(client, pro_account):
     response = await client.put(
         "/v1/me/branding-profile",
         json={
@@ -75,7 +74,7 @@ async def test_update_branding_profile_on_business_succeeds(client, business_acc
     assert body["primary_color"] == "#112233"
 
 
-async def test_get_branding_profile_before_any_update_is_all_null(client, business_account):
+async def test_get_branding_profile_before_any_update_is_all_null(client, pro_account):
     response = await client.get("/v1/me/branding-profile")
 
     assert response.status_code == 200
@@ -92,7 +91,7 @@ async def test_branding_profile_endpoints_require_authentication(client):
     assert response.status_code == 401
 
 
-async def test_update_branding_profile_is_a_partial_update(client, business_account):
+async def test_update_branding_profile_is_a_partial_update(client, pro_account):
     await client.put(
         "/v1/me/branding-profile",
         json={"logo_url": "https://example.com/logo.png", "primary_color": "#112233"},
