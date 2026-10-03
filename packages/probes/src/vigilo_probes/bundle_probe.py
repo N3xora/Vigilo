@@ -28,7 +28,7 @@ _SCRIPT_SRC_PATTERN = re.compile(r'<script\b[^>]*\bsrc\s*=\s*["\']([^"\']+)["\']
 _MAX_SCRIPTS = 5
 _MAX_SCRIPT_BYTES = 256 * 1024
 _REQUEST_TIMEOUT = 10.0
-_USER_AGENT = "VigiloScanner/0.1 (+https://vigilo.io/scanner)"
+_USER_AGENT = "VigiloScanner/0.1 (+https://vigilo.onenexora.com/scanner)"
 
 
 def _extract_script_urls(http: HttpObservation) -> list[str]:
