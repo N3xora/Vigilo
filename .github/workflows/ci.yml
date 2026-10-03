@@ -46,27 +46,31 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-      minio:
-        # Not `minio/minio` — GitHub Actions service containers can't
-        # override `command:`, and that image's default entrypoint requires
-        # one. Bitnami's image starts the server correctly from env vars
-        # alone.
-        image: bitnami/minio:latest
-        env:
-          MINIO_ROOT_USER: vigilo
-          MINIO_ROOT_PASSWORD: vigilo-dev-secret
-        ports: ["9000:9000"]
+      # adobe/s3mock, not minio: MinIO's 2025 licensing change pulled every
+      # free/anonymous image tag for it across Docker Hub, Bitnami and
+      # quay.io (confirmed against a real, authenticated Docker Hub login —
+      # the repository itself is gone, not merely access-gated), and
+      # localstack/localstack now refuses to start at all without a paid
+      # license token. s3mock is a real, unauthenticated S3-API server
+      # (verified locally: a genuine put_object/get_object round trip
+      # against it succeeds) and starts from its default command, so it
+      # fits the declarative `services:` form the way minio never could
+      # here (GitHub Actions service containers can't override `command:`,
+      # and minio's image needs an explicit `server /data`).
+      s3mock:
+        image: adobe/s3mock:latest
+        ports: ["9090:9090"]
         options: >-
-          --health-cmd "curl -f http://localhost:9000/minio/health/live"
+          --health-cmd "wget -q -O /dev/null http://localhost:9090/"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
       DATABASE_URL: postgresql://vigilo:vigilo-dev-secret@localhost:5432/vigilo
       REDIS_URL: redis://localhost:6379/0
-      OBJECT_STORE_ENDPOINT: http://localhost:9000
-      OBJECT_STORE_ACCESS_KEY: vigilo
-      OBJECT_STORE_SECRET_KEY: vigilo-dev-secret
+      OBJECT_STORE_ENDPOINT: http://localhost:9090
+      OBJECT_STORE_ACCESS_KEY: test
+      OBJECT_STORE_SECRET_KEY: test
       OBJECT_STORE_BUCKET: vigilo-evidence
       # render_pdf() reads this to build the Playwright navigation URL — CI
       # never launches a real browser (render_pdf's own tests inject a fake
@@ -86,9 +90,9 @@ jobs:
           from botocore.exceptions import ClientError
           client = boto3.client(
               's3',
-              endpoint_url='http://localhost:9000',
-              aws_access_key_id='vigilo',
-              aws_secret_access_key='vigilo-dev-secret',
+              endpoint_url='http://localhost:9090',
+              aws_access_key_id='test',
+              aws_secret_access_key='test',
               region_name='us-east-1',
           )
           try:
@@ -156,6 +160,17 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://vigilo:vigilo-dev-secret@localhost:5432/vigilo
+      # run_scan_job() unconditionally calls put_evidence_bundle(), which
+      # raises an uncaught StructuredError if object storage isn't
+      # configured at all — these point at nothing reachable (no minio
+      # service here, unlike the `test` job), but that's enough: a real
+      # connection failure is caught as ObjectStoreError and logged as a
+      # warning (jobs.py), which this suite's own assertions (tier and
+      # findings only, never bundle_id) don't depend on either way.
+      OBJECT_STORE_ENDPOINT: http://localhost:9000
+      OBJECT_STORE_ACCESS_KEY: vigilo
+      OBJECT_STORE_SECRET_KEY: vigilo-dev-secret
+      OBJECT_STORE_BUCKET: vigilo-evidence
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
