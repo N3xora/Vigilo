@@ -42,40 +42,28 @@ services:
       timeout: 5s
       retries: 10
 
+  # adobe/s3mock, not minio: MinIO's 2025 licensing change pulled every
+  # free/anonymous image tag for it across Docker Hub, Bitnami and
+  # quay.io — confirmed against a real, authenticated Docker Hub login,
+  # the minio/minio repository itself is gone, not merely access-gated
+  # (same thing .github/workflows/ci.yml and docker-compose.yml hit).
+  # No host port here, same as before — object access only ever went
+  # through the api/scanner containers on the internal network, and
+  # s3mock has no separate console UI to expose the way minio did.
   minio:
-    # Docker Hub's minio/minio and minio/mc repositories were pulled after
-    # MinIO's 2025 licensing change; quay.io/minio/* is the maintained
-    # public mirror (docs/self-hosting.md's Requirements section).
-    image: quay.io/minio/minio:latest
+    image: adobe/s3mock:latest
     restart: unless-stopped
-    command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: vigilo
-      MINIO_ROOT_PASSWORD: ${OBJECT_STORE_SECRET_KEY:-vigilo-dev-secret}
-    ports:
-      # Console only — object access goes through the api/scanner containers
-      # on the internal network, never the host.
-      - "127.0.0.1:9011:9001"
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: vigilo-evidence
+      COM_ADOBE_TESTING_S3MOCK_STORE_ROOT: /s3mockroot
+      COM_ADOBE_TESTING_S3MOCK_STORE_RETAIN_FILES_ON_EXIT: "true"
     volumes:
-      - vigilo_self_host_minio_data:/data
+      - vigilo_self_host_minio_data:/s3mockroot
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9090/"]
       interval: 5s
       timeout: 5s
       retries: 10
-
-  minio-init:
-    image: quay.io/minio/mc:latest
-    depends_on:
-      minio:
-        condition: service_healthy
-    restart: "no"
-    entrypoint: >
-      /bin/sh -c "
-      mc alias set local http://minio:9000 vigilo ${OBJECT_STORE_SECRET_KEY:-vigilo-dev-secret} &&
-      mc mb -p local/vigilo-evidence &&
-      exit 0
-      "
 
   api:
     build:
@@ -89,8 +77,6 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
     ports:
       # Loopback-only — Caddy (below) is the only public entry point.
       # Container-to-container traffic (Caddy -> api) uses the compose
@@ -100,7 +86,7 @@ services:
       ENV: production
       DATABASE_URL: postgresql+asyncpg://vigilo:${POSTGRES_PASSWORD:-vigilo-dev-secret}@postgres:5432/vigilo
       REDIS_URL: redis://redis:6379/0
-      OBJECT_STORE_ENDPOINT: http://minio:9000
+      OBJECT_STORE_ENDPOINT: http://minio:9090
       OBJECT_STORE_ACCESS_KEY: vigilo
       OBJECT_STORE_SECRET_KEY: ${OBJECT_STORE_SECRET_KEY:-vigilo-dev-secret}
       OBJECT_STORE_BUCKET: vigilo-evidence
@@ -108,7 +94,7 @@ services:
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:?set CLERK_SECRET_KEY in .env}
       CLERK_JWKS_URL: ${CLERK_JWKS_URL:?set CLERK_JWKS_URL in .env}
       POSTMARK_SERVER_TOKEN: ${POSTMARK_SERVER_TOKEN:-}
-      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-scans@vigilo.io}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-scans@onenexora.com}
       WEB_APP_URL: ${WEB_APP_URL:-http://localhost:3000}
       ADDITIONAL_CORS_ORIGINS: ${ADDITIONAL_CORS_ORIGINS:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -132,13 +118,11 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
     environment:
       ENV: production
       DATABASE_URL: postgresql+asyncpg://vigilo:${POSTGRES_PASSWORD:-vigilo-dev-secret}@postgres:5432/vigilo
       REDIS_URL: redis://redis:6379/0
-      OBJECT_STORE_ENDPOINT: http://minio:9000
+      OBJECT_STORE_ENDPOINT: http://minio:9090
       OBJECT_STORE_ACCESS_KEY: vigilo
       OBJECT_STORE_SECRET_KEY: ${OBJECT_STORE_SECRET_KEY:-vigilo-dev-secret}
       OBJECT_STORE_BUCKET: vigilo-evidence
@@ -148,7 +132,7 @@ services:
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-4-5}
       ANTHROPIC_WORKSPACE_ID: ${ANTHROPIC_WORKSPACE_ID:-}
       POSTMARK_SERVER_TOKEN: ${POSTMARK_SERVER_TOKEN:-}
-      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-scans@vigilo.io}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-scans@onenexora.com}
 
   web:
     build:
