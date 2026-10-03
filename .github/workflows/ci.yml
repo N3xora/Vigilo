@@ -202,6 +202,29 @@ jobs:
       - run: npm run lint
       - run: npm run build
 
+  # Nothing previously caught a broken or misformatted Caddyfile before
+  # docs/self-hosting.md's "Production VPS deployment" path hit it —
+  # the first signal would otherwise be `docker compose up` crash-looping
+  # the caddy service on a self-hoster's own box. WEB_DOMAIN/API_DOMAIN
+  # are dummy values here only to satisfy the Caddyfile's `{$WEB_DOMAIN}`/
+  # `{$API_DOMAIN}` substitution during `caddy validate` — this checks the
+  # config is well-formed, not that any real domain is reachable.
+  caddy:
+    name: Caddyfile (fmt + validate)
+    runs-on: ubuntu-latest
+    env:
+      WEB_DOMAIN: example.com
+      API_DOMAIN: api.example.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: caddy fmt --diff
+        run: docker run --rm -v "$PWD/Caddyfile:/Caddyfile:ro" caddy:2-alpine caddy fmt --diff /Caddyfile
+      - name: caddy validate
+        run: |
+          docker run --rm -v "$PWD/Caddyfile:/Caddyfile:ro" \
+            -e WEB_DOMAIN -e API_DOMAIN \
+            caddy:2-alpine caddy validate --config /Caddyfile --adapter caddyfile
+
   # Phase 9 (docs/self-hosting.md): a broken Dockerfile should fail CI, not
   # surface for the first time when a self-hoster tries to build one. Builds
   # only — no registry push, no credentials needed. apps/web's build args
