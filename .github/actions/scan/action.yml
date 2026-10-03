@@ -15,6 +15,14 @@ inputs:
       Leave unset to never fail the build regardless of findings.
     required: false
     default: ''
+  post-comment:
+    description: >-
+      When 'true', post (or update) a single PR comment summarizing the
+      findings, in addition to the SARIF upload. Requires the calling
+      workflow to grant `pull-requests: write` and only has effect when
+      the triggering event is a pull_request. Leave unset/'false' to skip.
+    required: false
+    default: 'false'
 
 outputs:
   sarif-file:
@@ -24,11 +32,12 @@ outputs:
 # Composite, not a Docker action, so that the SARIF upload can happen
 # *before* this action fails the job on a breached --fail-on threshold —
 # a Docker action's single entrypoint can't sequence that. Only one scan
-# runs: apps/cli/src/vigilo_cli/main.py's --sarif and --fail-on read the
-# same scan result, so the SARIF content and the pass/fail decision can
-# never disagree with each other (two separate live scans of the same
-# target could legitimately return different results, so this isn't just
-# an optimization).
+# runs: apps/cli/src/vigilo_cli/main.py's --sarif, --fail-on and
+# --json-out all read the same scan result, so the SARIF content, the PR
+# comment (when post-comment: true) and the pass/fail decision can never
+# disagree with each other (two separate live scans of the same target
+# could legitimately return different results, so this isn't just an
+# optimization).
 runs:
   using: 'composite'
   steps:
@@ -39,7 +48,7 @@ runs:
           -f "${{ github.action_path }}/../../../apps/cli/Dockerfile" \
           "${{ github.action_path }}/../../.."
 
-    - name: Scan (one run produces both the SARIF file and the pass/fail decision)
+    - name: Scan (one run produces the SARIF file, the JSON report, and the pass/fail decision)
       id: scan
       shell: bash
       run: |
@@ -51,14 +60,64 @@ runs:
         if [ -n "${{ inputs.fail-on }}" ]; then
           docker_args+=(--fail-on "${{ inputs.fail-on }}")
         fi
-        docker run --rm vigilo-cli "${docker_args[@]}" > vigilo-results.sarif
+        # --json-out writes inside the container, so it only lands on the
+        # host when a volume is mounted for it — mounted unconditionally
+        # (cheap) rather than branching the docker invocation on
+        # post-comment, keeping this one scan's shape identical either way.
+        docker_args+=(--json-out /out/vigilo-report.json)
+        mkdir -p "$PWD/vigilo-out"
+        docker run --rm -v "$PWD/vigilo-out:/out" vigilo-cli "${docker_args[@]}" > vigilo-results.sarif
         echo "exit-code=$?" >> "$GITHUB_OUTPUT"
         echo "sarif-file=vigilo-results.sarif" >> "$GITHUB_OUTPUT"
+        echo "json-file=vigilo-out/vigilo-report.json" >> "$GITHUB_OUTPUT"
 
     - name: Upload SARIF to Code Scanning
       uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: ${{ steps.scan.outputs.sarif-file }}
+
+    - name: Render PR comment
+      if: inputs.post-comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      run: |
+        docker run --rm -v "$PWD/vigilo-out:/out" vigilo-cli \
+          render-pr-comment --json-in /out/vigilo-report.json > vigilo-comment.md
+
+    - name: Post or update PR comment
+      if: inputs.post-comment == 'true' && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        # The comment body is read from a file, not interpolated into this
+        # script, because it reflects data observed on the scanned target
+        # (header values, response text) which this action does not
+        # control — untrusted input must never be spliced into the script
+        # text itself (GitHub's own guidance on actions/github-script),
+        # only ever passed as a plain string value like this.
+        script: |
+          const fs = require('fs');
+          const marker = '<!-- vigilo-scan-comment -->';
+          const body = fs.readFileSync('vigilo-comment.md', 'utf8');
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          const existing = comments.find((c) => c.body.startsWith(marker));
+          if (existing) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existing.id,
+              body,
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+          }
 
     - name: Enforce fail-on threshold
       if: steps.scan.outputs.exit-code != '0'
