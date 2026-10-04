@@ -10,6 +10,7 @@ from vigilo_api.routers import (
     badge,
     billing,
     branding,
+    internal,
     monitors,
     public_api,
     reports,
@@ -48,6 +49,7 @@ app.include_router(accounts.router)
 app.include_router(reports.router)
 app.include_router(share_links.router)
 app.include_router(billing.router)
+app.include_router(internal.router)
 app.include_router(billing.plans_router)
 app.include_router(monitors.router)
 app.include_router(badge.router)
