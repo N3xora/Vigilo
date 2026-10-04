@@ -45,14 +45,22 @@ def org_account_email(clerk_org_id: str) -> str:
 
 
 async def get_or_create_org_account(
-    session: AsyncSession, clerk_org_id: str, contact_email: str
+    session: AsyncSession, clerk_org_id: str, contact_email: str | None
 ) -> Account:
     """Look up the account owned by a Clerk organisation; create it (active,
     free) on the first request made inside that organisation. `contact_email`
     is only used at creation — it is the first acting member's email."""
-    existing = await get_account_by_clerk_org_id(session, clerk_org_id)
-    if existing is not None:
-        return existing
+    result = await session.execute(
+        select(AccountRow).where(AccountRow.clerk_org_id == clerk_org_id)
+    )
+    existing_row = result.scalar_one_or_none()
+    if existing_row is not None:
+        # An account created by a plan sync has no contact yet; the first member to
+        # act inside the organisation becomes it.
+        if existing_row.contact_email is None and contact_email:
+            existing_row.contact_email = contact_email
+            await session.flush()
+        return Account.model_validate(existing_row)
     row = AccountRow(
         email=org_account_email(clerk_org_id),
         clerk_org_id=clerk_org_id,
@@ -292,3 +300,31 @@ async def upsert_branding_profile(
     # outside an async context.
     await session.refresh(row)
     return BrandingProfile.model_validate(row)
+
+
+async def set_org_account_plan(
+    session: AsyncSession, clerk_org_id: str, plan_id: str
+) -> Account | None:
+    """Apply a plan decided by NEXORA Core to an organisation's account.
+
+    `plan_id` is what `entitlements()` reads, so this is the whole effect. A paid
+    plan creates the account if the organisation has not used Vigilo yet; a
+    downgrade for an organisation Vigilo has never seen changes nothing (and
+    returns None), so a deleted organisation is never resurrected by a late event.
+    """
+    result = await session.execute(
+        select(AccountRow).where(AccountRow.clerk_org_id == clerk_org_id)
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        if plan_id == "free":
+            return None
+        row = AccountRow(
+            email=org_account_email(clerk_org_id),
+            clerk_org_id=clerk_org_id,
+            status="active",
+        )
+        session.add(row)
+    row.plan_id = plan_id
+    await session.flush()
+    return Account.model_validate(row)

@@ -5,6 +5,7 @@ from vigilo_identity.repository import (
     get_or_create_account,
     get_or_create_org_account,
     org_account_email,
+    set_org_account_plan,
 )
 
 
@@ -38,3 +39,36 @@ async def test_a_personal_account_has_no_org_and_notifies_its_own_email(db_sessi
 
     assert account.clerk_org_id is None
     assert account.notification_email == "me@example.com"
+
+
+async def test_set_plan_creates_a_paid_org_account_without_a_contact(db_session):
+    account = await set_org_account_plan(db_session, "org_9", "pro")
+
+    assert account is not None
+    assert (account.plan_id, account.clerk_org_id, account.contact_email) == ("pro", "org_9", None)
+
+
+async def test_set_plan_never_creates_an_account_for_a_downgrade(db_session):
+    assert await set_org_account_plan(db_session, "org_ghost", "free") is None
+    assert await get_account_by_clerk_org_id(db_session, "org_ghost") is None
+
+
+async def test_set_plan_updates_an_existing_account_and_keeps_its_contact(db_session):
+    await get_or_create_org_account(db_session, "org_9", "owner@example.com")
+
+    await set_org_account_plan(db_session, "org_9", "pro")
+    account = await set_org_account_plan(db_session, "org_9", "free")
+
+    assert account is not None
+    assert (account.plan_id, account.notification_email) == ("free", "owner@example.com")
+
+
+async def test_the_first_acting_member_becomes_the_contact_of_a_synced_account(db_session):
+    await set_org_account_plan(db_session, "org_9", "pro")
+
+    account = await get_or_create_org_account(db_session, "org_9", "alice@example.com")
+
+    assert account.contact_email == "alice@example.com"
+    # A later member does not take over the contact.
+    again = await get_or_create_org_account(db_session, "org_9", "bob@example.com")
+    assert again.contact_email == "alice@example.com"

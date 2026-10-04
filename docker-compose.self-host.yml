@@ -104,6 +104,10 @@ services:
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       STRIPE_PRICE_ID_PRO: ${STRIPE_PRICE_ID_PRO:-}
       STRIPE_PRICE_ID_PRO_YEARLY: ${STRIPE_PRICE_ID_PRO_YEARLY:-}
+      # NEXORA Core signs the plan updates it sends for organisation accounts with this
+      # shared secret (docs/org-accounts.md). Unset = POST /v1/internal/org-plan is off.
+      NEXORA_SYNC_SECRET: ${NEXORA_SYNC_SECRET:-}
+      NEXORA_CONSOLE_BILLING_URL: ${NEXORA_CONSOLE_BILLING_URL:-}
       STRIPE_PORTAL_CONFIGURATION_ID: ${STRIPE_PORTAL_CONFIGURATION_ID:-}
 
   scanner:

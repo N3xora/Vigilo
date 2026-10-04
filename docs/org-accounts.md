@@ -17,8 +17,17 @@ An org account's `email` is a synthetic, never-deliverable
 `contact_email` — the first acting member's email — is where notifications and
 Stripe receipts go (`Account.notification_email`).
 
-Billing (checkout and the customer portal) in an org account requires the
-`org:admin` role; a missing role fails closed. Personal accounts are unaffected.
+## Billing
+
+Organisation accounts are billed by **NEXORA Core**, not by Vigilo: Vigilo's checkout and
+portal return `409` with a `billing_url` pointing at NEXORA Console. Core records the Stripe
+subscription (the same Pro prices Vigilo sells) and then tells Vigilo the plan with
+`POST /v1/internal/org-plan`, signed with HMAC-SHA256 over `"<unix-seconds>.<raw body>"` using
+the shared `NEXORA_SYNC_SECRET` (replay window 5 minutes, constant-time comparison, 404 until
+the secret is set, identical 401 for every signature failure). A paid plan creates the
+organisation's account if it does not exist yet; a downgrade for an organisation Vigilo has
+never seen changes nothing. The call is idempotent. Personal accounts keep Vigilo's own
+checkout and portal, unchanged.
 
 ## Rollout
 

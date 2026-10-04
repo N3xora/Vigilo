@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import httpx
 import pytest
 
 from vigilo_api import deps
@@ -77,49 +76,42 @@ def stripe_ok(monkeypatch):
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_123")
     monkeypatch.setenv("STRIPE_PRICE_ID_PRO", "price_pro_test")
     monkeypatch.setenv("WEB_APP_URL", "https://vigilo.test")
+    monkeypatch.setenv("NEXORA_CONSOLE_BILLING_URL", "https://console.test/billing")
     config.cache_clear()
 
     async def fake_checkout(plan_id, email, account_id, **kwargs):
-        fake_checkout.seen = {"email": email, "account_id": account_id}
+        fake_checkout.called = True
         return "https://checkout.stripe.com/c/pay/x"
 
+    fake_checkout.called = False
     monkeypatch.setattr(billing_router, "create_checkout_url", fake_checkout)
     yield fake_checkout
     config.cache_clear()
 
 
-@pytest.mark.parametrize("role", ["org:member", None])
-async def test_billing_in_an_org_needs_the_admin_role(client, monkeypatch, stripe_ok, role):
-    headers = _as(
-        monkeypatch, user_id="user_b", email="bob@example.com", org_id="org_1", org_role=role
-    )
-
-    response = await client.post("/v1/billing/checkout", json={"plan_id": "pro"}, headers=headers)
-
-    assert response.status_code == 403
-
-
-async def test_an_org_admin_can_check_out_and_the_receipt_goes_to_the_contact(
-    client, monkeypatch, stripe_ok
+@pytest.mark.parametrize("role", ["org:admin", "org:member", None])
+async def test_an_organisation_is_sent_to_console_for_billing_whatever_its_role(
+    client, monkeypatch, stripe_ok, role
 ):
     headers = _as(
-        monkeypatch,
-        user_id="user_a",
-        email="alice@example.com",
-        org_id="org_1",
-        org_role="org:admin",
+        monkeypatch, user_id="user_a", email="alice@example.com", org_id="org_1", org_role=role
     )
 
-    response = await client.post("/v1/billing/checkout", json={"plan_id": "pro"}, headers=headers)
+    checkout = await client.post("/v1/billing/checkout", json={"plan_id": "pro"}, headers=headers)
+    portal = await client.post("/v1/billing/portal", headers=headers)
 
-    assert response.status_code == 200
-    assert stripe_ok.seen["email"] == "alice@example.com"
+    for response in (checkout, portal):
+        assert response.status_code == 409
+        assert response.json()["detail"]["billing_url"] == "https://console.test/billing"
+    assert stripe_ok.called is False
 
 
-async def test_a_personal_account_can_always_check_out(client, monkeypatch, stripe_ok):
+async def test_a_personal_account_can_still_check_out_through_vigilo(
+    client, monkeypatch, stripe_ok
+):
     headers = _as(monkeypatch, user_id="user_a", email="alice@example.com")
 
     response = await client.post("/v1/billing/checkout", json={"plan_id": "pro"}, headers=headers)
 
     assert response.status_code == 200
-    assert isinstance(response, httpx.Response)
+    assert stripe_ok.called is True
