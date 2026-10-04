@@ -82,6 +82,8 @@ class PlanResponse(BaseModel):
 class AccountResponse(BaseModel):
     account_id: uuid.UUID
     email: str
+    # Clerk organisation that owns this account; null for a personal account.
+    organization_id: str | None = None
     status: str
     created_at: datetime
     entitlements: EntitlementsResponse

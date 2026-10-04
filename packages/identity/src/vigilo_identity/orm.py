@@ -32,6 +32,12 @@ class AccountRow(Base):
     plan_id: Mapped[str | None] = mapped_column(String(64), default=None)
     data_region: Mapped[str | None] = mapped_column(String(32), default=None)
     clerk_user_id: Mapped[str | None] = mapped_column(String(128), unique=True, default=None)
+    # An organisation-owned account (the tenant is the Clerk organisation, not
+    # a person). `email` stays unique and non-null, so an org account carries
+    # a synthetic one; `contact_email` is where its notifications and billing
+    # receipts go (the email of the member who first acted in the org).
+    clerk_org_id: Mapped[str | None] = mapped_column(String(128), unique=True, default=None)
+    contact_email: Mapped[str | None] = mapped_column(String(320), default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

@@ -14,7 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from vigilo_api.auth import ClerkAuthError, verify_clerk_jwt
 from vigilo_api.queue import get_arq_pool
 from vigilo_identity.models import Account
-from vigilo_identity.repository import get_account_by_clerk_id, get_or_create_account
+from vigilo_identity.repository import (
+    get_account_by_clerk_id,
+    get_or_create_account,
+    get_or_create_org_account,
+)
 from vigilo_persistence import session_scope
 
 
@@ -44,6 +48,15 @@ async def require_account(request: Request, session: SessionDep) -> Account:
     except ClerkAuthError as exc:
         raise HTTPException(status_code=401, detail=exc.message) from exc
 
+    request.state.org_role = claims.org_role
+
+    if claims.org_id:
+        if not claims.email:
+            raise HTTPException(status_code=401, detail="session token has no email claim")
+        return await get_or_create_org_account(
+            session, clerk_org_id=claims.org_id, contact_email=claims.email
+        )
+
     account = await get_account_by_clerk_id(session, claims.user_id)
     if account is not None:
         return account
@@ -54,6 +67,18 @@ async def require_account(request: Request, session: SessionDep) -> Account:
 
 
 AccountDep = Annotated[Account, Depends(require_account)]
+
+
+async def require_billing_account(request: Request, account: AccountDep) -> Account:
+    """Billing (checkout, portal) for an organisation-owned account is limited
+    to organisation admins; a missing or non-admin role fails closed. A
+    personal account is always its own admin."""
+    if account.clerk_org_id and getattr(request.state, "org_role", None) != "org:admin":
+        raise HTTPException(status_code=403, detail="organisation admin role required for billing")
+    return account
+
+
+BillingAccountDep = Annotated[Account, Depends(require_billing_account)]
 
 
 async def optional_account(request: Request, session: SessionDep) -> Account | None:

@@ -221,7 +221,7 @@ async def public_submit_scan(
         ),
     )
     job = await create_scan_job(
-        session, target.id, decision.granted_tier, account.email, REGISTRY_VERSION
+        session, target.id, decision.granted_tier, account.notification_email, REGISTRY_VERSION
     )
     job = await advance(session, job.id, "authorized")
     await session.commit()
