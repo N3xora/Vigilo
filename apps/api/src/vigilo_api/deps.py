@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from vigilo_api.auth import ClerkAuthError, verify_clerk_jwt
 from vigilo_api.queue import get_arq_pool
+from vigilo_core.config import config
 from vigilo_identity.models import Account
 from vigilo_identity.repository import (
     get_account_by_clerk_id,
@@ -48,8 +49,6 @@ async def require_account(request: Request, session: SessionDep) -> Account:
     except ClerkAuthError as exc:
         raise HTTPException(status_code=401, detail=exc.message) from exc
 
-    request.state.org_role = claims.org_role
-
     if claims.org_id:
         if not claims.email:
             raise HTTPException(status_code=401, detail="session token has no email claim")
@@ -69,12 +68,19 @@ async def require_account(request: Request, session: SessionDep) -> Account:
 AccountDep = Annotated[Account, Depends(require_account)]
 
 
-async def require_billing_account(request: Request, account: AccountDep) -> Account:
-    """Billing (checkout, portal) for an organisation-owned account is limited
-    to organisation admins; a missing or non-admin role fails closed. A
-    personal account is always its own admin."""
-    if account.clerk_org_id and getattr(request.state, "org_role", None) != "org:admin":
-        raise HTTPException(status_code=403, detail="organisation admin role required for billing")
+async def require_billing_account(account: AccountDep) -> Account:
+    """Billing (checkout, portal) through Vigilo is for personal accounts only.
+    An organisation's subscription is owned by NEXORA Core (Console), so the
+    request is refused with a pointer there rather than creating a second,
+    competing subscription."""
+    if account.clerk_org_id:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Organisation billing is managed in NEXORA Console.",
+                "billing_url": config().nexora_console_billing_url,
+            },
+        )
     return account
 
 
