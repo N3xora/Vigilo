@@ -31,6 +31,39 @@ async def get_account_by_clerk_id(session: AsyncSession, clerk_user_id: str) -> 
     return Account.model_validate(row) if row else None
 
 
+async def get_account_by_clerk_org_id(session: AsyncSession, clerk_org_id: str) -> Account | None:
+    stmt = select(AccountRow).where(AccountRow.clerk_org_id == clerk_org_id)
+    result = await session.execute(stmt)
+    row = result.scalar_one_or_none()
+    return Account.model_validate(row) if row else None
+
+
+def org_account_email(clerk_org_id: str) -> str:
+    """The synthetic, never-deliverable `accounts.email` of an org account
+    (the column is unique and non-null; `.invalid` is reserved by RFC 2606)."""
+    return f"{clerk_org_id}@org.vigilo.invalid"
+
+
+async def get_or_create_org_account(
+    session: AsyncSession, clerk_org_id: str, contact_email: str
+) -> Account:
+    """Look up the account owned by a Clerk organisation; create it (active,
+    free) on the first request made inside that organisation. `contact_email`
+    is only used at creation — it is the first acting member's email."""
+    existing = await get_account_by_clerk_org_id(session, clerk_org_id)
+    if existing is not None:
+        return existing
+    row = AccountRow(
+        email=org_account_email(clerk_org_id),
+        clerk_org_id=clerk_org_id,
+        contact_email=contact_email,
+        status="active",
+    )
+    session.add(row)
+    await session.flush()
+    return Account.model_validate(row)
+
+
 async def get_account_by_email(session: AsyncSession, email: str) -> Account | None:
     """Read-only — never creates. Used where a caller needs to know whether
     a *returning* submitter already exists without the side effect of

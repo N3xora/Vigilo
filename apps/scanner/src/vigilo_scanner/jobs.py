@@ -117,7 +117,7 @@ async def _run_due_monitor(ctx: dict[str, Any], monitor: Monitor, now: datetime)
             return
 
         job = await create_scan_job(
-            session, target.id, decision.granted_tier, account.email, REGISTRY_VERSION
+            session, target.id, decision.granted_tier, account.notification_email, REGISTRY_VERSION
         )
         job = await advance(session, job.id, "authorized")
         job_id = job.id
@@ -235,7 +235,7 @@ async def detect_regression_job(ctx: dict[str, Any], scan_job_id: str) -> None:
         await reschedule_monitor(
             session, monitor.id, monitor.next_run_at, report.pending_score_drop
         )
-        account_email = account.email
+        account_email = account.notification_email
         await session.commit()
 
     if not occurrences:
@@ -289,7 +289,7 @@ async def record_scan_failed_alert_job(ctx: dict[str, Any], scan_job_id: str, re
             dedupe_key=dedupe_key,
         )
         alert_id = alert.id
-        account_email = account.email
+        account_email = account.notification_email
         target_origin = target.origin
         target_id = target.id
         await session.commit()

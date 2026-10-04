@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 
-from vigilo_api.deps import AccountDep, SessionDep
+from vigilo_api.deps import BillingAccountDep, SessionDep
 from vigilo_api.schemas import CheckoutRequest, CheckoutResponse, PlanResponse, PortalResponse
 from vigilo_billing import PLANS, UnrecognizedWebhookEvent, interpret_webhook_event
 from vigilo_core.config import config
@@ -41,11 +41,11 @@ plans_router = APIRouter(prefix="/v1", tags=["billing"])
 
 
 @router.post("/checkout", response_model=CheckoutResponse)
-async def create_checkout(body: CheckoutRequest, account: AccountDep) -> CheckoutResponse:
+async def create_checkout(body: CheckoutRequest, account: BillingAccountDep) -> CheckoutResponse:
     billing_page = f"{config().web_app_url or ''}/dashboard/billing"
     checkout_url = await create_checkout_url(
         body.plan_id,
-        account.email,
+        account.notification_email,
         str(account.id),
         success_url=f"{billing_page}?checkout=success",
         cancel_url=billing_page,
@@ -55,7 +55,7 @@ async def create_checkout(body: CheckoutRequest, account: AccountDep) -> Checkou
 
 
 @router.post("/portal", response_model=PortalResponse)
-async def create_portal(account: AccountDep, session: SessionDep) -> PortalResponse:
+async def create_portal(account: BillingAccountDep, session: SessionDep) -> PortalResponse:
     """Self-service subscription management (cancel, card, invoices) on
     Stripe's hosted Customer Portal, scoped to the caller's own latest
     Stripe subscription — never one named by the client."""

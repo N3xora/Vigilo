@@ -18,7 +18,8 @@ router = APIRouter(prefix="/v1", tags=["accounts"])
 async def get_me(account: AccountDep) -> AccountResponse:
     return AccountResponse(
         account_id=account.id,
-        email=account.email,
+        email=account.notification_email,
+        organization_id=account.clerk_org_id,
         status=account.status,
         created_at=account.created_at,
         entitlements=EntitlementsResponse.model_validate(entitlements(account.plan_id)),
