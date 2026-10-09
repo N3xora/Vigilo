@@ -22,6 +22,7 @@ import json
 from collections.abc import Awaitable, Callable
 
 from vigilo_core.models import CheckManifest, Finding
+from vigilo_reporting.guides import get_guide
 from vigilo_reporting.models import RemediationPrompt
 
 LlmCaller = Callable[[str, str], Awaitable[str]]  # (prompt, system) -> raw text response
@@ -61,11 +62,23 @@ _REQUIRED_KEYS = {
 
 
 def template_remediation(finding: Finding, manifest: CheckManifest) -> RemediationPrompt:
+    guide = get_guide(finding.check_id)
+    impact = f'Leaves "{manifest.title}" unaddressed, at {finding.severity.value} severity.'
+    if guide is not None:
+        return RemediationPrompt(
+            check_id=finding.check_id,
+            source="template",
+            explanation=finding.summary,
+            impact=impact,
+            remediation_steps=guide.steps,
+            agent_prompt=f"{guide.agent_prompt}\n\nContext: {finding.summary}",
+            estimated_effort=guide.estimated_effort,
+        )
     return RemediationPrompt(
         check_id=finding.check_id,
         source="template",
         explanation=finding.summary,
-        impact=f"Leaves \"{manifest.title}\" unaddressed, at {finding.severity.value} severity.",
+        impact=impact,
         remediation_steps=[manifest.remediation_template],
         agent_prompt=(
             f"In this codebase, fix the following issue: {manifest.remediation_template}\n\n"

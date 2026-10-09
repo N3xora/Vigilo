@@ -25,7 +25,7 @@ export function EvidencePanel({
             {evidence.matched_indicator}
           </pre>
         ) : null}
-        <p className="text-xs text-black/40 dark:text-white/40">
+        <p className="text-xs text-black/60 dark:text-white/65">
           Captured {new Date(evidence.captured_at).toLocaleString()}
         </p>
       </div>

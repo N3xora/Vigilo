@@ -8,15 +8,21 @@ import type { ApiKeyResponse } from "../../lib/types";
 const JWT_TEMPLATE = process.env.NEXT_PUBLIC_CLERK_JWT_TEMPLATE ?? "vigilo-api";
 
 const ALL_SCOPES = [
-  "scan:run",
-  "scan:read",
-  "project:read",
-  "report:read",
-  "monitor:read",
-  "monitor:write",
+  "vigilo:scan:run",
+  "vigilo:scan:read",
+  "vigilo:project:read",
+  "vigilo:report:read",
+  "vigilo:monitor:read",
+  "vigilo:monitor:write",
 ];
 
-export function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyResponse[] }) {
+export function ApiKeysManager({
+  initialKeys,
+  orgId,
+}: {
+  initialKeys: ApiKeyResponse[];
+  orgId: string;
+}) {
   const { getToken } = useAuth();
   const [keys, setKeys] = useState<ApiKeyResponse[]>(initialKeys);
   const [name, setName] = useState("");
@@ -29,8 +35,8 @@ export function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyResponse[] 
   const refresh = useCallback(async () => {
     const token = await getToken({ template: JWT_TEMPLATE });
     if (!token) return;
-    setKeys(await api.listApiKeys(token));
-  }, [getToken]);
+    setKeys(await api.listApiKeys(token, orgId));
+  }, [getToken, orgId]);
 
   function toggleScope(scope: string) {
     setScopes((current) =>
@@ -44,7 +50,7 @@ export function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyResponse[] 
     try {
       const token = await getToken({ template: JWT_TEMPLATE });
       if (!token) throw new ApiError(401, null);
-      const result = await api.createApiKey(name, scopes, token);
+      const result = await api.createApiKey(name, scopes, token, orgId);
       setRevealedKey(result.api_key);
       setCopied(false);
       setName("");
@@ -62,7 +68,7 @@ export function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyResponse[] 
     try {
       const token = await getToken({ template: JWT_TEMPLATE });
       if (!token) throw new ApiError(401, null);
-      await api.revokeApiKey(apiKeyId, token);
+      await api.revokeApiKey(apiKeyId, token, orgId);
       await refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't revoke API key.");
@@ -135,7 +141,7 @@ export function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyResponse[] 
       </div>
 
       {keys.length === 0 ? (
-        <p className="text-sm text-black/50 dark:text-white/50">No API keys yet.</p>
+        <p className="text-sm text-black/60 dark:text-white/65">No API keys yet.</p>
       ) : (
         <ul className="space-y-2">
           {keys.map((key) => {
@@ -146,11 +152,11 @@ export function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyResponse[] 
                 className="rounded-lg border border-black/10 dark:border-white/20 p-4 text-sm space-y-1"
               >
                 <div className="flex items-center justify-between">
-                  <span className={isRevoked ? "text-black/40 dark:text-white/40" : "font-medium"}>
+                  <span className={isRevoked ? "text-black/60 dark:text-white/65" : "font-medium"}>
                     {key.name}
                   </span>
                   {isRevoked ? (
-                    <span className="text-xs text-black/40 dark:text-white/40">Revoked</span>
+                    <span className="text-xs text-black/60 dark:text-white/65">Revoked</span>
                   ) : (
                     <button
                       type="button"
@@ -161,8 +167,8 @@ export function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyResponse[] 
                     </button>
                   )}
                 </div>
-                <p className="text-xs font-mono text-black/50 dark:text-white/50">{key.prefix}…</p>
-                <p className="text-xs text-black/50 dark:text-white/50">{key.scopes.join(", ")}</p>
+                <p className="text-xs font-mono text-black/60 dark:text-white/65">{key.prefix}…</p>
+                <p className="text-xs text-black/60 dark:text-white/65">{key.scopes.join(", ")}</p>
               </li>
             );
           })}

@@ -29,7 +29,7 @@ from vigilo_security.egress_guard import Resolver, ValidatedConnection, validate
 
 _REQUEST_TIMEOUT = 10.0
 _MAX_BYTES = 64 * 1024
-_USER_AGENT = "VigiloScanner/0.1 (+https://vigilo.io/scanner)"
+_USER_AGENT = "VigiloScanner/0.1 (+https://app.onenexora.com/aup)"
 
 # Small, fixed, published candidate list — not a wordlist scan. Each entry:
 # (path, kind). Every kind is aggregated by packages/checks/src/vigilo_checks

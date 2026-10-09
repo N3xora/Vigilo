@@ -1,0 +1,5 @@
+{
+  "avoid": ["Snyk", "Aikido", "Wiz", "Talonwatch", "CodeSlick", "CodeShield"],
+  "domains": ["snyk.io", "aikido.dev"],
+  "colors": []
+}

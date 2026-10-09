@@ -1,0 +1,30 @@
+# Site blocks to add to a Caddy that ALREADY runs on the VPS and holds ports
+# 80/443 (see docs/self-hosting.md, "Behind an existing reverse proxy").
+# Do not run this repo's bundled `caddy` service next to it.
+#
+# Pick ONE of the two upstream styles, depending on how the existing Caddy runs.
+#
+# A) Caddy runs directly on the host (systemd): proxy to the loopback ports the
+#    compose file publishes (127.0.0.1:3000 for web, 127.0.0.1:8000 for api).
+#    Check first that nothing else already listens on those two ports:
+#        ss -ltnp | grep -E ':(3000|8000)\b'
+#
+# B) Caddy runs in Docker: join its container to the `vigilo-self-host_default`
+#    network and use the container names instead (second pair of lines below).
+#
+# After editing the existing Caddyfile:  caddy validate --config <path>  then reload
+# (systemctl reload caddy, or `docker exec <caddy> caddy reload --config <path>`).
+# Caddy issues the certificates for both names itself once their DNS points at
+# this VPS, so create the A records first.
+
+app.onenexora.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3000
+	# B) reverse_proxy vigilo-self-host-web-1:3000
+}
+
+vigilo-api.onenexora.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8000
+	# B) reverse_proxy vigilo-self-host-api-1:8000
+}

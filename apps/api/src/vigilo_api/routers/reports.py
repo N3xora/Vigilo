@@ -15,29 +15,39 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
+from vigilo_api.access import target_role
 from vigilo_api.deps import OptionalAccountDep, QueueDep, SessionDep
 from vigilo_api.report_rendering import get_branding_for_target, render_scan_report
 from vigilo_api.schemas import PdfStatusResponse, ScanReportResponse
 from vigilo_identity.models import Account
+from vigilo_identity.org_repository import role_at_least
 from vigilo_orchestrator.reports import (
     get_findings_for_scan,
     get_or_create_pdf_report,
     get_report_pdf_bytes,
 )
 from vigilo_orchestrator.service import get_scan_by_job_id, get_scan_job
-from vigilo_project.repository import get_or_create_default_project, get_target
+from vigilo_project.repository import get_target
 
 router = APIRouter(tags=["reports"])
 
 
-async def _is_owner(session: SessionDep, account: Account | None, target_id: uuid.UUID) -> bool:
+async def _can_accept_risk(
+    session: SessionDep, account: Account | None, target_id: uuid.UUID
+) -> bool:
     if account is None:
         return False
-    target = await get_target(session, target_id)
-    if target is None:
+    role = await target_role(session, account, target_id)
+    return role is not None and role_at_least(role, "member")
+
+
+async def _is_owner(session: SessionDep, account: Account | None, target_id: uuid.UUID) -> bool:
+    """Owner-level controls (PDF export, share links, monitoring) are for
+    admins and owners of the organisation that owns the target."""
+    if account is None:
         return False
-    project = await get_or_create_default_project(session, account.id)
-    return target.project_id == project.id
+    role = await target_role(session, account, target_id)
+    return role is not None and role_at_least(role, "admin")
 
 
 @router.get("/v1/scans/{scan_job_id}/report", response_model=ScanReportResponse)
@@ -60,6 +70,7 @@ async def get_scan_report(
     response.scan_job_id = scan_job_id
     response.target_id = job.target_id
     response.is_owner = await _is_owner(session, account, job.target_id)
+    response.can_accept_risk = await _can_accept_risk(session, account, job.target_id)
     response.branding = await get_branding_for_target(session, job.target_id)
     return response
 

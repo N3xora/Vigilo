@@ -30,15 +30,21 @@ export function ScoreHeader({ report }: { report: ScanReportResponse }) {
         <span className={`text-5xl font-bold ${gradeColor}`}>{report.grade}</span>
         <span className="text-2xl">{report.score.toFixed(0)} / 100</span>
       </div>
-      <p className="text-xs text-black/50 dark:text-white/50 mt-2">
+      {report.stack && report.stack.length > 0 ? (
+        <p className="mt-2 text-sm text-black/70 dark:text-white/70">
+          <span className="font-medium">Detected: </span>
+          {report.stack.join(" · ")}
+        </p>
+      ) : null}
+      <p className="text-xs text-black/60 dark:text-white/65 mt-2">
         Scanned {new Date(report.generated_at).toLocaleString()} · registry {report.registry_version}
       </p>
-      <p className="text-xs text-black/40 dark:text-white/40 mt-4 max-w-prose">
+      <p className="text-xs text-black/60 dark:text-white/65 mt-4 max-w-prose">
         This is an automated assessment, not a certification, and reflects the target&apos;s state
         at the scan timestamp under the registry version above.
       </p>
       {branding?.footer_text ? (
-        <p className="text-xs text-black/40 dark:text-white/40 mt-2">{branding.footer_text}</p>
+        <p className="text-xs text-black/60 dark:text-white/65 mt-2">{branding.footer_text}</p>
       ) : null}
     </div>
   );

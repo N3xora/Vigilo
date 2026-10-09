@@ -10,9 +10,11 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vigilo_core.models import Target, Tier, VerificationMethod
+from vigilo_identity.org_repository import personal_org_id
 from vigilo_project.errors import OwnershipProofNotFound
 from vigilo_project.models import OwnershipProof, Project, Suppression
 from vigilo_project.orm import OwnershipProofRow, ProjectRow, SuppressionRow, TargetRow
@@ -32,18 +34,35 @@ def _target_from_row(row: TargetRow) -> Target:
     )
 
 
-async def get_or_create_default_project(session: AsyncSession, account_id: uuid.UUID) -> Project:
-    """No project-management UI this phase — every account gets exactly one
-    project, named "Default", created lazily on first use."""
-    result = await session.execute(select(ProjectRow).where(ProjectRow.account_id == account_id))
+async def get_or_create_org_project(
+    session: AsyncSession, org_id: uuid.UUID, created_by: uuid.UUID
+) -> Project:
+    """Each organisation has exactly one project, "Default", created lazily on
+    first use by whoever acts first (`created_by`). The unique index on
+    `projects.org_id` settles a race between two first requests: the loser
+    reads back the winner's row."""
+    result = await session.execute(select(ProjectRow).where(ProjectRow.org_id == org_id))
     row = result.scalar_one_or_none()
+    if row is not None:
+        return Project.model_validate(row)
 
-    if row is None:
-        row = ProjectRow(account_id=account_id, name="Default")
-        session.add(row)
-        await session.flush()
-
+    try:
+        async with session.begin_nested():
+            row = ProjectRow(account_id=created_by, org_id=org_id, name="Default")
+            session.add(row)
+            await session.flush()
+    except IntegrityError:
+        result = await session.execute(select(ProjectRow).where(ProjectRow.org_id == org_id))
+        row = result.scalar_one()
     return Project.model_validate(row)
+
+
+async def get_or_create_default_project(session: AsyncSession, account_id: uuid.UUID) -> Project:
+    """The project of the account's personal organisation — what the anonymous
+    scan path and anything not yet organisation-aware use."""
+    return await get_or_create_org_project(
+        session, await personal_org_id(session, account_id), account_id
+    )
 
 
 async def get_project(session: AsyncSession, project_id: uuid.UUID) -> Project | None:

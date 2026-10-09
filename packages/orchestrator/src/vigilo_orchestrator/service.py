@@ -123,6 +123,7 @@ async def record_scan_result(
     result: Score,
     duration_ms: int,
     bundle_id: str | None = None,
+    stack: list[str] | None = None,
 ) -> Scan:
     """Persists the `Scan` header plus every `Finding` row. Called once, when
     the job reaches `scoring`, immediately before `advance(..., "reporting")`.
@@ -137,6 +138,7 @@ async def record_scan_result(
         duration_ms=duration_ms,
         tier=job.tier.value,
         bundle_id=bundle_id,
+        stack=stack,
     )
     session.add(scan_row)
     await session.flush()

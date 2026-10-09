@@ -39,7 +39,13 @@ from vigilo_orchestrator.service import (
 )
 from vigilo_persistence import session_scope
 from vigilo_probes import run_probes
-from vigilo_project.repository import get_ownership_proof, get_target, mark_proof_verified
+from vigilo_project.repository import (
+    get_ownership_proof,
+    get_project,
+    get_target,
+    mark_proof_verified,
+)
+from vigilo_reporting.context import stack_from_signals
 from vigilo_reporting.errors import PdfRenderError
 from vigilo_reporting.pdf import render_pdf
 from vigilo_reporting.remediation import generate_remediation
@@ -50,6 +56,22 @@ from vigilo_security.ownership import verify_ownership
 
 REGISTRY_VERSION = "0.1"
 _MODULE = "vigilo_orchestrator"
+
+
+async def _org_of(session, target) -> uuid.UUID | None:
+    """The organisation that owns a target, for the audit trail."""
+    project = await get_project(session, target.project_id)
+    return project.org_id if project else None
+
+
+def _stack(bundle: EvidenceBundle) -> list[str]:
+    fingerprint = bundle.fingerprint
+    backends = bundle.backends.detected if bundle.backends else []
+    return stack_from_signals(
+        fingerprint.hosting_signals if fingerprint else [],
+        fingerprint.framework_signals if fingerprint else [],
+        [b.provider for b in backends],
+    )
 
 
 def _evaluate(bundle: EvidenceBundle, tier: Tier) -> tuple[list[Finding], Score]:
@@ -106,6 +128,7 @@ async def run_scan_job(ctx: dict[str, Any], scan_job_id: str) -> None:
                     actor="scanner",
                     action="scan_execution_denied",
                     subject=target.origin,
+                    org_id=await _org_of(session, target),
                     metadata={"reason": str(exc)},
                 ),
             )
@@ -174,7 +197,9 @@ async def run_scan_job(ctx: dict[str, Any], scan_job_id: str) -> None:
     duration_ms = int((time.monotonic() - started) * 1000)
     async with session_scope() as session:
         await advance(session, job_uuid, "scoring")
-        await record_scan_result(session, job, findings, result, duration_ms, bundle_id=bundle_id)
+        await record_scan_result(
+            session, job, findings, result, duration_ms, bundle_id=bundle_id, stack=_stack(bundle)
+        )
         await advance(session, job_uuid, "reporting")
 
     if job.requested_by:
@@ -243,6 +268,7 @@ async def verify_ownership_job(ctx: dict[str, Any], proof_id: str) -> None:
                 actor="scanner",
                 action="ownership_verified",
                 subject=target.origin,
+                org_id=await _org_of(session, target),
                 metadata={"method": proof.method, "proof_id": proof_id},
             ),
         )

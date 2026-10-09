@@ -5,6 +5,7 @@ from redis.asyncio import Redis
 from vigilo_api.routers.public_api import scan_status_events
 from vigilo_core.config import config
 from vigilo_core.models import Confidence, Finding, Score, Severity, Tier, Verdict
+from vigilo_identity.org_repository import personal_org_id
 from vigilo_identity.repository import (
     create_api_key,
     get_account_by_id,
@@ -155,9 +156,7 @@ async def test_public_get_scan_report_and_findings(client):
         score = Score(value=83.0, grade="B", registry_version="0.1")
         await record_scan_result(session, job, findings, score, duration_ms=10)
 
-    report_response = await client.get(
-        f"/public/v1/scans/{job.id}/report", headers=_auth(raw_key)
-    )
+    report_response = await client.get(f"/public/v1/scans/{job.id}/report", headers=_auth(raw_key))
     assert report_response.status_code == 200
     assert report_response.json()["score"] == 83.0
 
@@ -250,16 +249,19 @@ async def test_public_api_rate_limit_returns_429_with_retry_after(client):
     )
     # Pro's api_rate_limit_per_minute is 300 — pre-load the counter to the
     # limit directly in Redis rather than making 300 real requests.
+    # The budget is keyed by the key's organisation (here: the personal org).
+    async with session_scope() as session:
+        org_id = await personal_org_id(session, account.id)
     redis = Redis.from_url(config().redis_url)
     try:
-        await redis.set(f"ratelimit:{account.id}", 300, ex=60)
+        await redis.set(f"ratelimit:{org_id}", 300, ex=60)
 
         response = await client.get("/public/v1/projects", headers=_auth(raw_key))
 
         assert response.status_code == 429
         assert "Retry-After" in response.headers
     finally:
-        await redis.delete(f"ratelimit:{account.id}")
+        await redis.delete(f"ratelimit:{org_id}")
         await redis.aclose()
 
 
@@ -280,9 +282,7 @@ async def test_scan_status_events_yields_on_every_status_change(client):
         job = await create_scan_job(session, target.id, Tier.PASSIVE, account.email, "0.1")
         job = await advance(session, job.id, "authorized")
 
-        events = [
-            line async for line in scan_status_events(session, job.id, 0.01, 0.05)
-        ]
+        events = [line async for line in scan_status_events(session, job.id, 0.01, 0.05)]
 
     assert len(events) >= 1
     assert '"status": "authorized"' in events[0]
@@ -304,10 +304,58 @@ async def test_public_scan_stream_endpoint_returns_the_right_content_type(client
     )
     scan_job_id = create_response.json()["scan_job_id"]
 
-    response = await client.get(
-        f"/public/v1/scans/{scan_job_id}/stream", headers=_auth(raw_key)
-    )
+    response = await client.get(f"/public/v1/scans/{scan_job_id}/stream", headers=_auth(raw_key))
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     assert "authorized" in response.text
+
+
+async def test_public_api_scans_count_against_the_organisations_monthly_quota(client):
+    """The public API and the web form share one per-organisation counter, and
+    the quota stops at the number the Usage page shows."""
+    from vigilo_api.deps import require_account
+    from vigilo_api.main import app
+
+    account, raw_key = await _create_account_and_key(
+        "public-quota@example.com", "free", ["scan:run"]
+    )
+    body = {"target_url": "https://example.com"}
+    for _ in range(3):
+        accepted = await client.post("/public/v1/scans", json=body, headers=_auth(raw_key))
+        assert accepted.status_code == 202, accepted.text
+    denied = await client.post("/public/v1/scans", json=body, headers=_auth(raw_key))
+    assert denied.status_code == 429
+
+    # the web form (a different door) now sees the same exhausted month
+    web = await client.post(
+        "/v1/scans", json={"target_url": "https://example.com", "email": account.email}
+    )
+    assert web.status_code == 429
+
+    async with session_scope() as session:
+        org_id = await personal_org_id(session, account.id)
+    app.dependency_overrides[require_account] = lambda: account
+    try:
+        usage = {
+            (u["product_slug"], u["meter"]): u
+            for u in (await client.get(f"/v1/orgs/{org_id}/usage")).json()
+        }
+    finally:
+        app.dependency_overrides.pop(require_account, None)
+    assert (usage[("vigilo", "scans")]["used"], usage[("vigilo", "scans")]["limit"]) == (3, 3)
+
+
+async def test_public_api_accepts_product_qualified_scopes(client):
+    _account, raw_key = await _create_account_and_key(
+        "qualified@example.com", "pro", ["vigilo:project:read"]
+    )
+
+    allowed = await client.get("/public/v1/projects", headers=_auth(raw_key))
+    assert allowed.status_code == 200
+
+    denied = await client.post(
+        "/public/v1/scans", json={"target_url": "https://example.com"}, headers=_auth(raw_key)
+    )
+    assert denied.status_code == 403
+    assert "vigilo:scan:run" in denied.json()["detail"]

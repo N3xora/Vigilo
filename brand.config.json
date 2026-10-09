@@ -4,31 +4,31 @@
     "name": "Vigilo",
     "legalName": "Vigilo",
     "slug": "vigilo",
-    "domain": "vigilo.io",
+    "domain": "onenexora.com",
     "tagline": "Ship it before it ships you.",
     "shortDescription": "Live security and compliance scanning for AI-generated web apps.",
-    "supportEmail": "support@vigilo.io",
-    "abuseEmail": "abuse@vigilo.io",
-    "securityEmail": "security@vigilo.io"
+    "supportEmail": "support@onenexora.com",
+    "abuseEmail": "abuse@onenexora.com",
+    "securityEmail": "security@onenexora.com"
   },
   "namespaces": {
     "pythonPackage": "vigilo",
     "npmScope": "@vigilo",
     "cliBinary": "vigilo",
     "mcpServer": "vigilo-mcp",
-    "userAgent": "VigiloScanner/1.0 (+https://vigilo.io/scanner)",
+    "userAgent": "VigiloScanner/1.0 (+https://app.onenexora.com/aup)",
     "dnsVerificationKey": "vigilo-site-verification",
     "wellKnownPath": "/.well-known/vigilo-verification.txt",
     "badgePath": "/badge/{public_id}.svg"
   },
   "theme": {
     "colorPrimary": "#0F172A",
-    "colorAccent": "#22D3EE",
-    "colorCritical": "#DC2626",
-    "colorHigh": "#EA580C",
-    "colorMedium": "#CA8A04",
-    "colorLow": "#0891B2",
-    "colorPass": "#16A34A",
+    "colorAccent": "#0E7490",
+    "colorCritical": "#B91C1C",
+    "colorHigh": "#C2410C",
+    "colorMedium": "#A16207",
+    "colorLow": "#0E7490",
+    "colorPass": "#15803D",
     "fontSans": "Inter",
     "fontMono": "JetBrains Mono"
   }

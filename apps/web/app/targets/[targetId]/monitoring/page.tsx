@@ -51,12 +51,12 @@ export default async function TargetMonitoringPage({
   return (
     <>
       <header className="flex items-center justify-between px-6 py-4 border-b border-black/10 dark:border-white/10">
-        <Link href="/" className="font-semibold">
+        <Link href="/products/vigilo" className="font-semibold">
           {brand.name}
         </Link>
         <UserButton />
       </header>
-      <main className="mx-auto max-w-2xl px-6 py-10 space-y-6">
+      <main className="mx-auto w-full max-w-2xl px-6 py-10 space-y-6">
         <div>
           <p className="text-sm text-black/60 dark:text-white/60 break-all">{target.origin}</p>
           <h1 className="text-2xl font-bold mt-1">Monitoring</h1>
@@ -65,7 +65,7 @@ export default async function TargetMonitoringPage({
         <MonitorPanel
           targetId={targetId}
           initialMonitor={monitor}
-          entitlements={account.entitlements}
+          entitlements={target.org_entitlements ?? account.entitlements}
         />
         <ScoreHistoryChart scores={scores} />
         <AlertTimeline alerts={alerts} />

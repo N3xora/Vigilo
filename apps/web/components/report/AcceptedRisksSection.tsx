@@ -28,6 +28,7 @@ export function AcceptedRisksSection({
   const { getToken } = useAuth();
   const accepted = findings.filter((finding) => finding.suppressed);
   const [suppressionIds, setSuppressionIds] = useState<Record<string, string>>({});
+  const [reasons, setReasons] = useState<Record<string, string>>({});
   const [busyFingerprint, setBusyFingerprint] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,6 +45,7 @@ export function AcceptedRisksSection({
         setSuppressionIds(
           Object.fromEntries(list.map((item) => [item.fingerprint, item.suppression_id])),
         );
+        setReasons(Object.fromEntries(list.map((item) => [item.fingerprint, item.reason])));
       } catch {
         // Best-effort lookup only — "Restore" simply stays disabled below.
       }
@@ -79,10 +81,10 @@ export function AcceptedRisksSection({
       open={printMode}
       className="mt-8 border-t border-black/10 dark:border-white/10 pt-6 text-sm"
     >
-      <summary className="cursor-pointer select-none font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
+      <summary className="cursor-pointer select-none font-semibold uppercase tracking-wide text-black/60 dark:text-white/65">
         Accepted risks ({accepted.length})
       </summary>
-      <p className="mt-1 text-xs text-black/50 dark:text-white/50 max-w-prose">
+      <p className="mt-1 text-xs text-black/60 dark:text-white/65 max-w-prose">
         Marked as a known, accepted risk by the target owner. Still counted in the score above and
         excluded from SARIF export and monitoring alerts.
       </p>
@@ -92,9 +94,15 @@ export function AcceptedRisksSection({
           <li key={finding.fingerprint} className="flex items-start justify-between gap-3">
             <div>
               <span className="font-medium">{finding.title}</span>
-              <span className="ml-2 text-xs text-black/40 dark:text-white/40">
+              <span className="ml-2 text-xs text-black/60 dark:text-white/65">
                 {finding.check_id}
               </span>
+              {reasons[finding.fingerprint] ? (
+                <p className="mt-0.5 text-xs text-black/70 dark:text-white/70">
+                  <span className="font-medium">Reason: </span>
+                  {reasons[finding.fingerprint]}
+                </p>
+              ) : null}
             </div>
             {interactive && !printMode ? (
               <button

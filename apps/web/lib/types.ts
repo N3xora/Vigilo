@@ -54,6 +54,7 @@ export interface ReportFindingResponse {
   evidence: EvidenceResponse | null;
   fingerprint: string;
   suppressed: boolean;
+  why_here?: string | null;
 }
 
 export interface BrandingProfileResponse {
@@ -67,6 +68,8 @@ export interface ScanReportResponse {
   scan_job_id: string | null;
   target_id: string | null;
   is_owner: boolean | null;
+  can_accept_risk?: boolean | null;
+  stack?: string[];
   target_origin: string;
   registry_version: string;
   score: number;
@@ -178,6 +181,8 @@ export interface ApiKeyCreateResponse {
 }
 
 export interface TargetResponse {
+  // Set on the single-target read only.
+  org_entitlements?: EntitlementsResponse | null;
   target_id: string;
   origin: string;
   verification_status: Tier;
@@ -235,4 +240,99 @@ export interface ApiErrorBody {
   code: string;
   message: string;
   context?: Record<string, unknown>;
+}
+
+export interface OrgResponse {
+  org_id: string;
+  name: string;
+  slug: string;
+  is_personal: boolean;
+  role: "owner" | "admin" | "member" | "viewer";
+  entitlements: EntitlementsResponse;
+}
+
+export interface OrgMemberResponse {
+  account_id: string;
+  email: string;
+  role: string;
+}
+
+export interface OrgProductResponse {
+  slug: string;
+  enabled: boolean;
+  available: boolean;
+}
+
+export interface OrgUsageResponse {
+  product_slug: string;
+  meter: string;
+  used: number;
+  limit: number | null;
+  period_start: string;
+}
+
+export interface OrgInviteResponse {
+  invite_id: string;
+  email: string;
+  role: string;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface OrgInviteCreateResponse {
+  invite_id: string;
+  email: string;
+  role: string;
+  expires_at: string;
+  token: string;
+  email_status: "sent" | "not_configured" | "rate_limited" | "failed";
+}
+
+export interface BillingProductLine {
+  product_slug: string;
+  product_name: string;
+  plan_id: string;
+  status: "active" | "free";
+  interval: "month" | "year" | null;
+  amount_cents: number;
+  currency: string;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  can_purchase: boolean;
+}
+
+export interface BillingSummaryResponse {
+  org_id: string;
+  org_name: string;
+  products: BillingProductLine[];
+  totals: { monthly_cents: number; yearly_cents: number; currency: string };
+}
+
+export interface AuditEntryResponse {
+  event_id: string;
+  occurred_at: string;
+  action: string;
+  subject: string;
+  actor_kind: "person" | "system";
+  actor_label: string;
+  details: Record<string, unknown>;
+}
+
+export interface AuditPageResponse {
+  events: AuditEntryResponse[];
+  next_cursor: string | null;
+  actions: string[];
+}
+
+export interface DeletionBlocker {
+  kind: "members" | "subscription";
+  org_id: string;
+  org_name: string;
+  detail: string;
+}
+
+export interface DeleteAccountResponse {
+  deleted: boolean;
+  identity_removed: boolean;
+  storage_cleanup: string;
 }

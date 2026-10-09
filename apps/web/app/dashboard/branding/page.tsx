@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { api } from "../../../lib/api";
+import { getActiveOrg } from "../../../lib/nexora/data";
 import { BrandingForm } from "../../../components/dashboard/BrandingForm";
 
 const JWT_TEMPLATE = process.env.NEXT_PUBLIC_CLERK_JWT_TEMPLATE ?? "vigilo-api";
@@ -13,9 +14,9 @@ export default async function DashboardBrandingPage() {
     redirect("/sign-in");
   }
 
-  const account = await api.getMe(token);
+  const org = await getActiveOrg();
 
-  if (!account.entitlements.white_label_allowed) {
+  if (!org.entitlements.white_label_allowed) {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold">Branding</h1>
@@ -36,12 +37,16 @@ export default async function DashboardBrandingPage() {
     );
   }
 
-  const profile = await api.getBrandingProfile(token);
+  const profile = await api.getBrandingProfile(token, org.id);
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Branding</h1>
-      <BrandingForm initialProfile={profile} />
+      <BrandingForm
+        initialProfile={profile}
+        orgId={org.id}
+        canEdit={org.role === "owner" || org.role === "admin"}
+      />
     </div>
   );
 }

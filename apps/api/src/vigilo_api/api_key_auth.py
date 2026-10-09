@@ -11,6 +11,8 @@ this needs a session, not a signing-key resolver.
 
 from __future__ import annotations
 
+import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -19,6 +21,7 @@ from fastapi import Depends, HTTPException, Request
 from vigilo_api.deps import SessionDep, _bearer_token
 from vigilo_billing import entitlements
 from vigilo_identity.models import Account
+from vigilo_identity.org_repository import plan_id_for_org
 from vigilo_identity.repository import (
     get_account_by_id,
     get_api_key_by_hash,
@@ -27,19 +30,38 @@ from vigilo_identity.repository import (
 )
 from vigilo_security.rate_limit import check_rate, get_redis_client
 
-ALL_SCOPES = frozenset(
-    {
-        "scan:run",
-        "scan:read",
-        "project:read",
-        "report:read",
-        "monitor:read",
-        "monitor:write",
-    }
+PRODUCT = "vigilo"
+_ACTIONS = (
+    "scan:run",
+    "scan:read",
+    "project:read",
+    "report:read",
+    "monitor:read",
+    "monitor:write",
 )
+# Scopes are `product:resource:action`. Keys issued before products existed
+# carry the bare `resource:action` form; those keep working as Vigilo scopes.
+ALL_SCOPES = frozenset(f"{PRODUCT}:{a}" for a in _ACTIONS)
 
 
-async def require_api_key(request: Request, session: SessionDep) -> tuple[Account, frozenset[str]]:
+def normalize_scope(scope: str) -> str:
+    """The product-qualified form of a scope (bare legacy scopes are Vigilo's)."""
+    return f"{PRODUCT}:{scope}" if scope in _ACTIONS else scope
+
+
+def normalize_scopes(scopes: Iterable[str]) -> list[str]:
+    return sorted({normalize_scope(s) for s in scopes})
+
+
+class KeyAccount(Account):
+    """The account behind an API key, plus the organisation the key belongs to."""
+
+    org_id: uuid.UUID
+
+
+async def require_api_key(
+    request: Request, session: SessionDep
+) -> tuple[KeyAccount, frozenset[str]]:
     raw_key = _bearer_token(request)
     api_key = await get_api_key_by_hash(session, hash_api_key(raw_key))
 
@@ -53,10 +75,12 @@ async def require_api_key(request: Request, session: SessionDep) -> tuple[Accoun
     await mark_api_key_used(session, api_key.id, datetime.now(UTC))
     await session.commit()  # the usage stamp must survive even if the handler later fails
 
-    return account, frozenset(api_key.scopes)
+    # The key acts in its organisation, not its creator's personal one.
+    key_account = KeyAccount(**account.model_dump(), org_id=api_key.org_id)
+    return key_account, frozenset(normalize_scopes(api_key.scopes))
 
 
-ApiKeyAuthDep = Annotated[tuple[Account, frozenset[str]], Depends(require_api_key)]
+ApiKeyAuthDep = Annotated[tuple[KeyAccount, frozenset[str]], Depends(require_api_key)]
 
 
 def require_scope(scope: str) -> Depends:
@@ -70,19 +94,23 @@ def require_scope(scope: str) -> Depends:
     default expression once at function-definition time.
 
     Also enforces the plan's per-minute rate limit (vision §12: "Rate
-    limits per plan; 429 with Retry-After") — keyed by *account*, not by
-    the individual API key: "per plan" reads as one shared budget for the
-    account, not a separate budget per key it happens to have issued."""
+    limits per plan; 429 with Retry-After") — keyed by the key's *organisation*,
+    not by the individual API key: "per plan" reads as one shared budget for
+    the organisation, not a separate budget per key it happens to have issued."""
 
-    async def _check(auth: ApiKeyAuthDep) -> Account:
+    async def _check(auth: ApiKeyAuthDep, session: SessionDep) -> KeyAccount:
         account, scopes = auth
-        if scope not in scopes:
+        needed = normalize_scope(scope)
+        if needed not in scopes:
             raise HTTPException(
-                status_code=403, detail=f"API key is missing the required scope: {scope}"
+                status_code=403, detail=f"API key is missing the required scope: {needed}"
             )
 
-        limit = entitlements(account.plan_id).api_rate_limit_per_minute
-        decision = await check_rate(get_redis_client(), f"ratelimit:{account.id}", limit)
+        # The budget belongs to the key's organisation and its plan.
+        limit = entitlements(
+            await plan_id_for_org(session, account.org_id)
+        ).api_rate_limit_per_minute
+        decision = await check_rate(get_redis_client(), f"ratelimit:{account.org_id}", limit)
         if not decision.allowed:
             raise HTTPException(
                 status_code=429,

@@ -25,6 +25,10 @@ jobs:
     # service containers mirror docker-compose.yml's local dev stack, on
     # each service's default port (CI has no port conflict with another
     # project, unlike the shifted ports docker-compose.yml uses locally).
+    # Object storage is not a service container: no MinIO image can be relied on
+    # (bitnami/minio was removed from Docker Hub, quay.io/minio now answers
+    # 401 to anonymous pulls), so a step below starts moto's S3-compatible
+    # server from the dev dependencies. The self-hosted stack still runs MinIO.
     services:
       postgres:
         image: postgres:16-alpine
@@ -46,21 +50,6 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-      minio:
-        # Not `minio/minio` — GitHub Actions service containers can't
-        # override `command:`, and that image's default entrypoint requires
-        # one. Bitnami's image starts the server correctly from env vars
-        # alone.
-        image: bitnami/minio:latest
-        env:
-          MINIO_ROOT_USER: vigilo
-          MINIO_ROOT_PASSWORD: vigilo-dev-secret
-        ports: ["9000:9000"]
-        options: >-
-          --health-cmd "curl -f http://localhost:9000/minio/health/live"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     env:
       DATABASE_URL: postgresql://vigilo:vigilo-dev-secret@localhost:5432/vigilo
       REDIS_URL: redis://localhost:6379/0
@@ -79,6 +68,15 @@ jobs:
           enable-cache: true
       - run: uv python install 3.11
       - run: uv sync --all-packages
+      - name: Start an S3-compatible server (moto) on :9000
+        run: |
+          nohup uv run moto_server -p 9000 > moto.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fs http://localhost:9000/ > /dev/null && exit 0
+            sleep 1
+          done
+          cat moto.log
+          exit 1
       - name: Create the evidence bucket
         run: |
           uv run python -c "
@@ -223,3 +221,128 @@ jobs:
           file: apps/${{ matrix.image }}/Dockerfile
           push: false
           tags: vigilo-${{ matrix.image }}:ci
+
+  # The browser suite (apps/web/e2e): real Next.js, the real API, a scanner worker,
+  # Postgres and Redis, against a Clerk *development* instance. It signs in with
+  # Clerk's testing helper, which needs only a test user's email, so three
+  # repository secrets are required (Settings, Secrets and variables, Actions):
+  #   E2E_CLERK_PUBLISHABLE_KEY   the dev instance's pk_test_...
+  #   E2E_CLERK_SECRET_KEY        the dev instance's sk_test_...
+  #   E2E_USER_EMAIL              an existing user in that instance (a throwaway one:
+  #                               the specs create organisations, targets and invitations
+  #                               in this job's own database, nothing at Clerk but sessions)
+  # Without them (or on a pull request from a fork, where GitHub withholds secrets) the
+  # job passes with a warning instead of failing. No Stripe or Postmark variables are
+  # set, so the tests cannot reach a real payment or email provider.
+  e2e:
+    name: Browser suite (Playwright, real stack)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vigilo
+          POSTGRES_PASSWORD: vigilo-dev-secret
+          POSTGRES_DB: vigilo
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U vigilo -d vigilo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://vigilo:vigilo-dev-secret@localhost:5432/vigilo
+      E2E_DATABASE_URL: postgresql://vigilo:vigilo-dev-secret@localhost:5432/vigilo
+      REDIS_URL: redis://localhost:6379/0
+      OBJECT_STORE_ENDPOINT: http://localhost:9000
+      OBJECT_STORE_ACCESS_KEY: vigilo
+      OBJECT_STORE_SECRET_KEY: vigilo-dev-secret
+      OBJECT_STORE_BUCKET: vigilo-evidence
+      WEB_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      NEXT_PUBLIC_CLERK_JWT_TEMPLATE: vigilo-api
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.E2E_CLERK_PUBLISHABLE_KEY }}
+      CLERK_SECRET_KEY: ${{ secrets.E2E_CLERK_SECRET_KEY }}
+      E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
+    steps:
+      - name: Are the Clerk secrets available?
+        id: keys
+        run: |
+          if [ -n "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" ] && [ -n "$CLERK_SECRET_KEY" ] && [ -n "$E2E_USER_EMAIL" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Browser suite skipped: add E2E_CLERK_PUBLISHABLE_KEY, E2E_CLERK_SECRET_KEY and E2E_USER_EMAIL as repository secrets (not available on fork pull requests)."
+          fi
+      - uses: actions/checkout@v4
+        if: steps.keys.outputs.configured == 'true'
+      - uses: astral-sh/setup-uv@v3
+        if: steps.keys.outputs.configured == 'true'
+        with:
+          enable-cache: true
+      - run: uv python install 3.11
+        if: steps.keys.outputs.configured == 'true'
+      - run: uv sync --all-packages
+        if: steps.keys.outputs.configured == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.keys.outputs.configured == 'true'
+        with:
+          node-version-file: apps/web/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install web dependencies and the Playwright browser
+        if: steps.keys.outputs.configured == 'true'
+        working-directory: apps/web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Derive the JWKS URL from the publishable key
+        if: steps.keys.outputs.configured == 'true'
+        run: |
+          python3 - <<'PY' >> "$GITHUB_ENV"
+          import base64, os
+          b = os.environ["NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"].split("_", 2)[2]
+          host = base64.b64decode(b + "=" * (-len(b) % 4)).decode().rstrip("$")
+          print(f"CLERK_JWKS_URL=https://{host}/.well-known/jwks.json")
+          PY
+      - name: Start moto (S3), migrate, start the API and the scanner worker
+        if: steps.keys.outputs.configured == 'true'
+        run: |
+          nohup uv run moto_server -p 9000 > moto.log 2>&1 &
+          for i in $(seq 1 30); do curl -fs http://localhost:9000/ > /dev/null && break; sleep 1; done
+          uv run python -c "
+          import boto3
+          boto3.client('s3', endpoint_url='http://localhost:9000', aws_access_key_id='vigilo',
+                       aws_secret_access_key='vigilo-dev-secret', region_name='us-east-1'
+                       ).create_bucket(Bucket='vigilo-evidence')
+          "
+          uv run alembic -c packages/persistence/alembic.ini upgrade head
+          nohup uv run uvicorn vigilo_api.main:app --port 8000 > api.log 2>&1 &
+          nohup uv run arq vigilo_scanner.worker.WorkerSettings > worker.log 2>&1 &
+          for i in $(seq 1 60); do curl -fs http://localhost:8000/healthz > /dev/null && exit 0; sleep 1; done
+          cat api.log
+          exit 1
+      - name: Run the browser suite
+        if: steps.keys.outputs.configured == 'true'
+        working-directory: apps/web
+        run: npx playwright test
+      - name: Keep the evidence when it fails
+        if: failure() && steps.keys.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure
+          path: |
+            apps/web/test-results/
+            api.log
+            worker.log
+            moto.log
+          retention-days: 7

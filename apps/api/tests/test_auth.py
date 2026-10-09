@@ -66,3 +66,22 @@ def test_a_token_missing_the_subject_claim_is_rejected():
 
     with pytest.raises(ClerkAuthError):
         verify_clerk_jwt(token, get_signing_key=_fake_get_signing_key)
+
+
+async def test_first_requests_for_a_new_person_arriving_together_all_succeed(client, monkeypatch):
+    """A page and its layout both call the API on a person's first load; the
+    two accounts inserts used to collide and one request got a 500."""
+    import asyncio
+
+    from vigilo_api import deps
+    from vigilo_api.auth import ClerkClaims
+
+    monkeypatch.setattr(
+        deps,
+        "verify_clerk_jwt",
+        lambda token: ClerkClaims(user_id="user_race_first_load", email="race-first@example.com"),
+    )
+    headers = {"Authorization": "Bearer anything"}
+    responses = await asyncio.gather(*(client.get("/v1/orgs", headers=headers) for _ in range(8)))
+    assert [r.status_code for r in responses] == [200] * 8
+    assert len({r.json()[0]["org_id"] for r in responses}) == 1  # one account, one personal org

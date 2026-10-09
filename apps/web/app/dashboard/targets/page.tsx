@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { api } from "../../../lib/api";
+import { getActiveOrg } from "../../../lib/nexora/data";
 import { TargetsManager } from "../../../components/dashboard/TargetsManager";
 
 const JWT_TEMPLATE = process.env.NEXT_PUBLIC_CLERK_JWT_TEMPLATE ?? "vigilo-api";
@@ -12,12 +13,13 @@ export default async function DashboardTargetsPage() {
     redirect("/sign-in");
   }
 
-  const targets = await api.listTargets(token);
+  const org = await getActiveOrg();
+  const targets = await api.listTargets(token, org.id);
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Targets</h1>
-      <TargetsManager initialTargets={targets} />
+      <TargetsManager initialTargets={targets} orgId={org.id} canAdd={org.role !== "viewer"} />
     </div>
   );
 }

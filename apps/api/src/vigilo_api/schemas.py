@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, StringConstraints
 
 from vigilo_core.models import Confidence, Severity, Tier, Verdict, VerificationMethod
 
@@ -89,7 +89,41 @@ class AccountResponse(BaseModel):
 
 class CheckoutRequest(BaseModel):
     plan_id: str
+    product_slug: str = "vigilo"
     interval: Literal["month", "year"] = "month"
+
+
+class BillingProductLine(BaseModel):
+    product_slug: str
+    product_name: str
+    plan_id: str
+    status: Literal["active", "free"]
+    interval: Literal["month", "year"] | None = None
+    # Display price of the plan in the smallest currency unit; what Stripe
+    # charges is the Stripe Price behind it.
+    amount_cents: int
+    currency: str = "usd"
+    current_period_end: datetime | None = None
+    # A cancellation has been requested; access continues to the date above.
+    cancel_at_period_end: bool = False
+    # Whether this product can be bought here today.
+    can_purchase: bool
+
+
+class BillingTotals(BaseModel):
+    """Recurring charges per cadence. Monthly and yearly are not converted into
+    each other: the customer is billed on each cadence separately."""
+
+    monthly_cents: int
+    yearly_cents: int
+    currency: str = "usd"
+
+
+class BillingSummaryResponse(BaseModel):
+    org_id: uuid.UUID
+    org_name: str
+    products: list[BillingProductLine]
+    totals: BillingTotals
 
 
 class CheckoutResponse(BaseModel):
@@ -110,6 +144,9 @@ class TargetResponse(BaseModel):
     verification_status: Tier
     verified_at: datetime | None = None
     verification_method: str | None = None
+    # Only set on the single-target read: the plan limits of the organisation
+    # that owns the target (its owner's plan), which gate monitoring and sharing.
+    org_entitlements: EntitlementsResponse | None = None
 
 
 class VerificationInitiate(BaseModel):
@@ -157,12 +194,16 @@ class ReportFindingResponse(BaseModel):
     evidence: EvidenceResponse | None
     fingerprint: str
     suppressed: bool = False
+    why_here: str | None = None
 
 
 class ScanReportResponse(BaseModel):
     scan_job_id: uuid.UUID | None = None
     target_id: uuid.UUID | None = None
     is_owner: bool | None = None
+    # True for the project's creator and for org members allowed to accept risks.
+    can_accept_risk: bool | None = None
+    stack: list[str] = []
     target_origin: str
     registry_version: str
     score: float
@@ -282,7 +323,7 @@ class ProjectResponse(BaseModel):
 class SuppressionCreate(BaseModel):
     fingerprint: str
     check_id: str
-    reason: str
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
     expires_at: datetime | None = None
 
 

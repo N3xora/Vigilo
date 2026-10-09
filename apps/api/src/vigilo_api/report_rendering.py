@@ -14,7 +14,8 @@ from vigilo_api.schemas import BrandingProfileResponse, ScanReportResponse
 from vigilo_billing import entitlements
 from vigilo_checks import REGISTRY
 from vigilo_core.models import Finding, Score
-from vigilo_identity.repository import get_account_by_id, get_branding_profile
+from vigilo_identity.org_repository import plan_id_for_org
+from vigilo_identity.repository import get_branding_profile_for_org
 from vigilo_orchestrator.models import Scan
 from vigilo_orchestrator.remediation import get_remediations_for_findings
 from vigilo_project.repository import (
@@ -30,7 +31,7 @@ MANIFESTS_BY_CHECK_ID = {check.manifest.check_id: check.manifest for check in RE
 async def get_branding_for_target(
     session: AsyncSession, target_id: uuid.UUID
 ) -> BrandingProfileResponse | None:
-    """`None` whenever the target's owning account isn't on a
+    """`None` whenever the target's owning organisation isn't on a
     `white_label_allowed` plan or hasn't configured a profile — so
     `apps/web` can render its own default styling unconditionally in that
     case, never needing to check the plan itself (Phase 9)."""
@@ -40,11 +41,12 @@ async def get_branding_for_target(
     project = await get_project(session, target.project_id)
     if project is None:
         return None
-    account = await get_account_by_id(session, project.account_id)
-    if account is None or not entitlements(account.plan_id).white_label_allowed:
+    # The profile and the white-label entitlement both belong to the
+    # organisation that owns the project (its owner's plan).
+    if not entitlements(await plan_id_for_org(session, project.org_id)).white_label_allowed:
         return None
 
-    profile = await get_branding_profile(session, account.id)
+    profile = await get_branding_profile_for_org(session, project.org_id)
     if profile is None:
         return None
 
@@ -86,6 +88,7 @@ async def render_scan_report(
         scan.created_at,
         remediations,
         suppressed_fingerprints,
+        scan.stack,
     )
     # `document.findings` are `vigilo_reporting.models.ReportFinding` instances,
     # a distinct class from this app's own `ReportFindingResponse` even though
@@ -100,4 +103,5 @@ async def render_scan_report(
         counts_by_severity=document.score.counts_by_severity,
         generated_at=document.generated_at,
         findings=[finding.model_dump() for finding in document.findings],
+        stack=document.stack,
     )

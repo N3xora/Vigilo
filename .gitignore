@@ -23,6 +23,7 @@ build/
 .env
 .env.*
 !.env.example
+!.env.production.example
 
 # Docker
 docker-compose.override.yml
@@ -38,3 +39,4 @@ TestResults.xml
 
 settings.local.json
 launch.json
+.e2e-logs/

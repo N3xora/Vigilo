@@ -64,6 +64,9 @@ class ScanRow(Base):
     duration_ms: Mapped[int] = mapped_column(Integer)
     tier: Mapped[str] = mapped_column(String(16))
     bundle_id: Mapped[str | None] = mapped_column(String(64), default=None)
+    # Stack keys observed during the scan (hosting, framework, backend), e.g.
+    # ["next.js", "supabase", "vercel"]; None for scans recorded before 0011.
+    stack: Mapped[list | None] = mapped_column(JSON, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

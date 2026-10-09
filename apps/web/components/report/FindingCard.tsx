@@ -4,10 +4,10 @@ import { EvidencePanel } from "./EvidencePanel";
 import { SuppressFindingButton } from "./SuppressFindingButton";
 
 const SEVERITY_BADGE: Record<string, string> = {
-  critical: "bg-severity-critical",
-  high: "bg-severity-high",
-  medium: "bg-severity-medium",
-  low: "bg-severity-low",
+  critical: "bg-fill-critical",
+  high: "bg-fill-high",
+  medium: "bg-fill-medium",
+  low: "bg-fill-low",
   info: "bg-black/40 dark:bg-white/40",
 };
 
@@ -30,7 +30,10 @@ export function FindingCard({
   onSuppressed?: (fingerprint: string) => void;
 }) {
   return (
-    <div className="rounded-lg border border-black/10 dark:border-white/10 p-4">
+    <div
+      id={`finding-${finding.fingerprint}`}
+      className="scroll-mt-4 rounded-lg border border-black/10 dark:border-white/10 p-4"
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <span
@@ -40,14 +43,20 @@ export function FindingCard({
           </span>
           <h3 className="mt-1.5 font-medium">{finding.title}</h3>
         </div>
-        <span className="shrink-0 text-xs text-black/40 dark:text-white/40">{finding.check_id}</span>
+        <span className="shrink-0 text-xs text-black/60 dark:text-white/65">{finding.check_id}</span>
       </div>
 
       <p className="mt-2 text-sm text-black/70 dark:text-white/70">{finding.summary}</p>
+      {finding.why_here ? (
+        <p className="mt-2 text-sm">
+          <span className="font-medium">Why this matters for your app: </span>
+          {finding.why_here}
+        </p>
+      ) : null}
 
       <div className="mt-3 rounded-md bg-black/5 dark:bg-white/5 p-3">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-black/50 dark:text-white/50">
+          <p className="text-xs font-medium uppercase tracking-wide text-black/60 dark:text-white/65">
             How to fix this
           </p>
           {finding.remediation.estimated_effort ? (
@@ -58,7 +67,7 @@ export function FindingCard({
           ) : null}
         </div>
         <p className="mt-1 text-sm">{finding.remediation.explanation}</p>
-        <p className="mt-2 text-xs text-black/50 dark:text-white/50">
+        <p className="mt-2 text-xs text-black/60 dark:text-white/65">
           <span className="font-medium">Impact: </span>
           {finding.remediation.impact}
         </p>

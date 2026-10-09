@@ -211,23 +211,63 @@ async def test_submit_scan_for_a_new_origin_beyond_the_free_plan_target_limit_is
 
 
 async def test_submit_scan_beyond_the_free_plan_monthly_scan_limit_is_denied(client):
-    """Free plan's scans_per_month_limit is 3 (packages/billing/plans.py) —
-    a 4th scan within the rolling 30-day window, even of an already-known
-    target, is denied."""
-    async with session_scope() as session:
-        account = await get_or_create_account(session, email="frequent-scanner@example.com")
-        project = await get_or_create_default_project(session, account.id)
-        target = await create_target(session, project.id, "https://example.com")
-        for _ in range(3):
-            await create_scan_job(session, target.id, Tier.PASSIVE, account.email, "0.1")
+    """Free plan's scans_per_month_limit is 3 (packages/billing/plans.py). The
+    quota reads the same per-organisation counter the Usage page shows, so a
+    4th scan this calendar month is denied: by actually submitting them."""
+    body = {"target_url": "https://example.com", "email": "frequent-scanner@example.com"}
+    for _ in range(3):
+        assert (await client.post("/v1/scans", json=body)).status_code == 202
 
-    response = await client.post(
-        "/v1/scans",
-        json={"target_url": "https://example.com", "email": "frequent-scanner@example.com"},
-    )
+    response = await client.post("/v1/scans", json=body)
 
     assert response.status_code == 429
     assert response.json()["code"] == "QUOTA_EXCEEDED"
+
+
+async def test_the_quota_counts_this_calendar_month_only_and_matches_the_usage_page(client):
+    from datetime import UTC, datetime
+
+    from vigilo_identity.org_repository import (
+        get_usage_count,
+        increment_usage,
+        personal_org_id,
+    )
+
+    email = "month-boundary@example.com"
+    body = {"target_url": "https://example.com", "email": email}
+    assert (await client.post("/v1/scans", json=body)).status_code == 202  # creates the account
+
+    async with session_scope() as session:
+        account = await get_or_create_account(session, email=email)
+        org_id = await personal_org_id(session, account.id)
+        # three scans last month do not count against this month...
+        last_month = datetime.now(UTC).date().replace(day=1)
+        last_month = last_month.replace(
+            year=last_month.year - (last_month.month == 1),
+            month=12 if last_month.month == 1 else last_month.month - 1,
+        )
+        await increment_usage(session, org_id, "vigilo", "scans", 3, today=last_month)
+        assert await get_usage_count(session, org_id, "vigilo", "scans") == 1
+
+    assert (await client.post("/v1/scans", json=body)).status_code == 202
+    assert (await client.post("/v1/scans", json=body)).status_code == 202
+    # ...and this month's three do: the fourth is refused, at exactly the number
+    # the Usage page reports (3 of 3).
+    denied = await client.post("/v1/scans", json=body)
+    assert denied.status_code == 429
+    async with session_scope() as session:
+        assert await get_usage_count(session, org_id, "vigilo", "scans") == 3
+
+
+async def test_a_paying_organisation_is_not_held_to_the_free_scan_limit(client):
+    email = "pro-scanner@example.com"
+    body = {"target_url": "https://example.com", "email": email}
+    assert (await client.post("/v1/scans", json=body)).status_code == 202
+    async with session_scope() as session:
+        account = await get_or_create_account(session, email=email)
+        await upsert_subscription(session, account.id, "pro", "active", "stripe", "sub_ps", None)
+    for _ in range(5):  # Pro has no monthly scan limit
+        assert (await client.post("/v1/scans", json=body)).status_code == 202
 
 
 async def test_get_scan_status_reflects_the_authorized_job(client):

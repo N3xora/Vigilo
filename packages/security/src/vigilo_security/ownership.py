@@ -38,7 +38,7 @@ resolver so this module never touches real DNS, the same rule
 
 _REQUEST_TIMEOUT = 10.0
 _MAX_BYTES = 64 * 1024
-_USER_AGENT = "VigiloScanner/0.1 (+https://vigilo.io/scanner)"
+_USER_AGENT = "VigiloScanner/0.1 (+https://app.onenexora.com/aup)"
 _META_TAG_PATTERN = re.compile(
     r'<meta\s+[^>]*name=["\']vigilo-site-verification["\'][^>]*content=["\']([^"\']+)["\']',
     re.IGNORECASE,

@@ -12,20 +12,41 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from vigilo_api.access import org_id_for_target, target_role
 from vigilo_api.deps import AccountDep, SessionDep
-from vigilo_api.routers.targets import _owned_target_or_404
 from vigilo_api.schemas import SuppressionCreate, SuppressionResponse
+from vigilo_core.models import Target
+from vigilo_identity.models import Account
+from vigilo_identity.org_repository import role_at_least
 from vigilo_project.models import Suppression
 from vigilo_project.repository import (
     create_suppression,
     get_suppression,
+    get_target,
     list_suppressions_for_target,
     revoke_suppression,
 )
 from vigilo_security.audit import AuditEvent, audit
 
 router = APIRouter(tags=["suppressions"])
+
+
+async def _target_for_risk_or_404(
+    session: AsyncSession, account: Account, target_id: uuid.UUID, *, minimum_role: str
+) -> Target:
+    """Accepting a risk is a team decision: the project's creator may always do
+    it, and so may any member of the project's organisation with at least
+    `minimum_role`. A read-only member gets 403 on writes; everyone else gets
+    404 so a target's existence is not disclosed."""
+    role = await target_role(session, account, target_id)
+    target = await get_target(session, target_id)
+    if role is None or target is None:
+        raise HTTPException(status_code=404, detail="target not found")
+    if not role_at_least(role, minimum_role):
+        raise HTTPException(status_code=403, detail=f"requires {minimum_role} role")
+    return target
 
 
 def _to_response(suppression: Suppression) -> SuppressionResponse:
@@ -52,7 +73,7 @@ async def suppress_finding(
     account: AccountDep,
     session: SessionDep,
 ) -> SuppressionResponse:
-    target = await _owned_target_or_404(session, account, target_id)
+    target = await _target_for_risk_or_404(session, account, target_id, minimum_role="member")
     suppression = await create_suppression(
         session,
         target_id=target.id,
@@ -69,6 +90,7 @@ async def suppress_finding(
             action="finding_suppressed",
             subject=suppression.fingerprint,
             account_id=account.id,
+            org_id=await org_id_for_target(session, target.id),
             metadata={"target_id": str(target.id), "check_id": suppression.check_id},
         ),
     )
@@ -79,7 +101,7 @@ async def suppress_finding(
 async def list_target_suppressions(
     target_id: uuid.UUID, account: AccountDep, session: SessionDep
 ) -> list[SuppressionResponse]:
-    target = await _owned_target_or_404(session, account, target_id)
+    target = await _target_for_risk_or_404(session, account, target_id, minimum_role="viewer")
     suppressions = await list_suppressions_for_target(session, target.id)
     return [_to_response(suppression) for suppression in suppressions]
 
@@ -94,7 +116,7 @@ async def revoke_target_suppression(
     account: AccountDep,
     session: SessionDep,
 ) -> SuppressionResponse:
-    await _owned_target_or_404(session, account, target_id)
+    await _target_for_risk_or_404(session, account, target_id, minimum_role="member")
 
     # Ownership of the suppression itself is checked via its target_id match
     # — a plain 404 on mismatch (not 403), matching api_keys.py's
@@ -114,6 +136,7 @@ async def revoke_target_suppression(
             action="finding_unsuppressed",
             subject=revoked.fingerprint,
             account_id=account.id,
+            org_id=await org_id_for_target(session, target_id),
             metadata={"target_id": str(target_id), "check_id": revoked.check_id},
         ),
     )

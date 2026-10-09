@@ -9,7 +9,7 @@ is the same application that runs as the hosted product, packaged for an
 operator who wants to run it on their own infrastructure instead.
 
 This is a self-managed deployment, not a managed one: you own upgrades,
-backups, TLS termination, and the Clerk/Paddle/Postmark/Anthropic accounts
+backups, TLS termination, and the Clerk/Stripe/Postmark/Anthropic accounts
 those integrations call out to.
 
 ## Requirements
@@ -28,11 +28,15 @@ those integrations call out to.
     prompts. Reports render with template-based remediation text without
     it (`docs/adr/ADR-0004-llm-boundary.md`'s hard availability
     requirement).
-  - [Paddle](https://paddle.com) — checkout and subscription billing.
-    Every account defaults to the Free plan's entitlements without it;
-    the checkout endpoint raises a clear config error if called with it
-    unset, since unlike email/LLM there's no safe fallback for processing
-    a payment.
+  - [Stripe](https://stripe.com) — checkout and subscription billing for
+    the Vigilo Pro plan (monthly and yearly). Every organisation is on the
+    Free plan without it; the checkout endpoint raises a clear config error
+    if called with it unset, since unlike email/LLM there's no safe fallback
+    for processing a payment. Billing is **per organisation**: each
+    organisation has its own subscription and Stripe customer.
+  - [Sentry](https://sentry.io) — error tracking for the API and scanner.
+    Off unless `SENTRY_DSN` is set; when on, it sends no request bodies,
+    headers, cookies, query strings, one-time link tokens or personal data.
 
 ## Quick start
 
@@ -56,7 +60,7 @@ docker compose -f docker-compose.self-host.yml exec api \
 
 `docker-compose.self-host.yml` wires Postgres/Redis/MinIO's internal
 addresses for you — you only need to set the variables in `.env.example`'s
-`PADDLE_*`/`CLERK_*`/`POSTMARK_*`/`ANTHROPIC_*` sections, plus these three
+`STRIPE_*`/`CLERK_*`/`POSTMARK_*`/`ANTHROPIC_*`/`SENTRY_*` sections, plus these three
 build-time variables that `apps/web`'s image needs (see below):
 
 | Variable | Used by | Notes |
@@ -70,7 +74,8 @@ build-time variables that `apps/web`'s image needs (see below):
 | `OBJECT_STORE_SECRET_KEY` | minio, api, scanner | Same. |
 | `POSTMARK_SERVER_TOKEN`, `MAIL_FROM_ADDRESS` | api, scanner | Optional (see above). |
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | api, scanner | Optional (see above). |
-| `PADDLE_VENDOR_ID`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_PRICE_ID_BUILDER`, `PADDLE_PRICE_ID_STUDIO`, `PADDLE_PRICE_ID_BUSINESS` | api | Optional (see above). One price ID per paid plan tier. |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID_PRO`, `STRIPE_PRICE_ID_PRO_YEARLY`, `STRIPE_PORTAL_CONFIGURATION_ID` | api | Optional (see above). Create the Pro monthly and yearly prices in Stripe, add a webhook endpoint at `https://<API_DOMAIN>/v1/billing/webhook` for `customer.subscription.created`, `.updated` and `.deleted`, and use that endpoint's signing secret. Use test keys until you have made and refunded one real purchase. |
+| `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` | api, scanner | Optional: error tracking, off unless `SENTRY_DSN` is set. |
 | `WEB_APP_URL` | api, scanner | The web app's origin — `apps/scanner`'s ARQ worker navigates here with Playwright to render a scan's report page to PDF. Must be `https://` + `WEB_DOMAIN` in production (see below); apps/api's CORS check is an exact origin-string match. |
 | `WEB_DOMAIN`, `API_DOMAIN` | caddy | Production only — see "Production VPS deployment" below. Leave unset for local-only self-hosting. |
 
@@ -105,7 +110,7 @@ control):
    `PUBLIC_API_BASE_URL`/`WEB_APP_URL` set to their `https://` form, and
    every account credential from "Requirements" above (a **production**
    Clerk application, not the dev instance used for local testing — plus
-   real Paddle/Postmark/Anthropic credentials if you're using them).
+   real Stripe/Postmark/Anthropic credentials if you're using them).
 
 **Then run the deploy script:**
 
@@ -164,9 +169,9 @@ docker compose -f docker-compose.self-host.yml exec api \
   uv run alembic -c packages/persistence/alembic.ini upgrade head
 ```
 
-## Custom domains for white-labeled reports (Business plan)
+## Custom domains for white-labeled reports (Pro plan)
 
-A Business-tier account's `BrandingProfile` (`PUT /v1/me/branding-profile`)
+An organisation's branding profile (`PUT /v1/me/branding-profile`, admins on a Pro plan)
 carries an optional `custom_domain` field. This is a different concern
 from `WEB_DOMAIN`/`API_DOMAIN` above (your own app's domain) — it's a
 *customer's* domain for their own white-labeled reports. Vigilo does not
@@ -209,3 +214,20 @@ To restore, extract the tarball and run `pg_restore` against the
 (no push) on every PR, catching a broken Dockerfile before it merges —
 it does not exercise `docker-compose.self-host.yml` itself, which is
 verified manually per `docs/build-roadmap.md`'s Phase 9 entry.
+
+## Accounts, data and deletion
+
+A person can delete their own account from **Account** in the console. It
+removes the account, every organisation they own (they must be its only
+member first, and any paid plan must already be set to end), everything under
+those organisations, their memberships elsewhere, the stored evidence and
+report files, and, when `CLERK_SECRET_KEY` is set, their Clerk user. What stays:
+things they created inside someone else's organisation (those stay with that
+organisation), the append-only audit log (it keeps a pseudonymous account id,
+shown as "Former member", and can name other people's addresses, for example in
+an invitation), and invoices at Stripe, which you must keep for accounting.
+If you operate this for others, say so in your privacy policy.
+
+Invitations and the audit log use the same sender and database as the rest:
+`MAIL_FROM_ADDRESS` should be an address on a domain you own and have
+verified with Postmark (SPF and DKIM), because invitations are sent from it.

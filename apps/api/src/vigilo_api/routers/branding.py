@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from vigilo_api.deps import AccountDep, SessionDep
+from vigilo_api.audit_log import record
+from vigilo_api.deps import AccountDep, ActiveOrgDep, SessionDep
 from vigilo_api.schemas import BrandingProfileResponse, BrandingProfileUpdate
 from vigilo_billing import QuotaExceeded, entitlements
-from vigilo_identity.repository import get_branding_profile, upsert_branding_profile
+from vigilo_identity.repository import get_branding_profile_for_org, upsert_branding_profile
 
 router = APIRouter(prefix="/v1/me/branding-profile", tags=["branding"])
 
@@ -27,20 +28,23 @@ def _to_response(profile) -> BrandingProfileResponse:
 
 @router.put("", response_model=BrandingProfileResponse)
 async def update_branding_profile(
-    body: BrandingProfileUpdate, account: AccountDep, session: SessionDep
+    body: BrandingProfileUpdate, account: AccountDep, org: ActiveOrgDep, session: SessionDep
 ) -> BrandingProfileResponse:
-    if not entitlements(account.plan_id).white_label_allowed:
+    org.require("admin")
+    if not entitlements(org.plan_id).white_label_allowed:
         raise QuotaExceeded("white-label branding is not included in the account's plan")
 
-    profile = await upsert_branding_profile(
-        session, account.id, **body.model_dump(exclude_unset=True)
+    changes = body.model_dump(exclude_unset=True)
+    profile = await upsert_branding_profile(session, account.id, org_id=org.org_id, **changes)
+    await record(
+        session, account, org.org_id, "branding_updated", "branding", fields=sorted(changes)
     )
     return _to_response(profile)
 
 
 @router.get("", response_model=BrandingProfileResponse)
 async def get_account_branding_profile(
-    account: AccountDep, session: SessionDep
+    org: ActiveOrgDep, session: SessionDep
 ) -> BrandingProfileResponse:
-    profile = await get_branding_profile(session, account.id)
+    profile = await get_branding_profile_for_org(session, org.org_id)
     return _to_response(profile)

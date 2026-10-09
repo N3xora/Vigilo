@@ -31,7 +31,7 @@ from vigilo_core.models import CheckManifest, Finding, Severity, Verdict
 
 _SARIF_SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 _TOOL_NAME = "Vigilo"
-_TOOL_INFO_URI = "https://vigilo.io"
+_TOOL_INFO_URI = "https://app.onenexora.com/products/vigilo"
 
 # GitHub's documented numeric band for properties.security-severity (0.0-10.0).
 _SECURITY_SEVERITY = {
@@ -133,8 +133,7 @@ def build_sarif_report(
                         "name": _TOOL_NAME,
                         "informationUri": _TOOL_INFO_URI,
                         "rules": [
-                            _rule(manifest)
-                            for _, manifest in sorted(manifests_used.items())
+                            _rule(manifest) for _, manifest in sorted(manifests_used.items())
                         ],
                     }
                 },

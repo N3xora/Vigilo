@@ -4,6 +4,10 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
+  // Dev only: the browser tests (and anyone opening http://127.0.0.1:3000)
+  // use 127.0.0.1, which Next treats as a cross-origin to "localhost" and
+  // blocks, taking the HMR socket and hydration with it.
+  allowedDevOrigins: ["127.0.0.1"],
   // lib/brand.ts reads ../../../brand.config.json (the repo-wide source of
   // truth) — widen Turbopack's root beyond apps/web so that resolves.
   turbopack: {

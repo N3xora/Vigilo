@@ -16,7 +16,7 @@ export default function PrivacyPolicyPage() {
           </Link>
           <h1 className="mt-4 text-2xl font-bold">Privacy Policy</h1>
           <p className="mt-1 text-sm text-black/60 dark:text-white/60">
-            Last updated: September 2026
+            Last updated: October 2026
           </p>
         </div>
 
@@ -37,8 +37,9 @@ export default function PrivacyPolicyPage() {
           <ul className="list-disc pl-6 space-y-1">
             <li>
               <strong>Email address</strong> — required to submit a scan or
-              create an account, used to identify your account and deliver
-              scan results.
+              create an account, used to identify your account. Scan results
+              are shown in the report on screen; we do not currently email
+              them.
             </li>
             <li>
               <strong>Account and authentication data</strong> — if you sign
@@ -89,25 +90,43 @@ export default function PrivacyPolicyPage() {
         </section>
 
         <section className="space-y-2">
+          <h2 className="text-lg font-semibold">People invited to an organisation</h2>
+          <p>
+            When an organisation owner or admin invites someone, we store the
+            invited email address, the role offered and the inviter until the
+            invitation is accepted, withdrawn or replaced. We do not currently
+            email invitations: the person who invited you passes you a link.
+            If you were not expecting one, ignore it: nothing happens unless
+            you accept.
+          </p>
+        </section>
+
+        <section className="space-y-2">
           <h2 className="text-lg font-semibold">Who we share data with</h2>
           <p>
             We use a small number of subprocessors to run the service:
-            our cloud hosting and database provider, our email provider
-            (for account and report notifications), our authentication
+            our cloud hosting and database provider, our authentication
             provider (Clerk), our merchant-of-record billing provider, and
             an LLM provider used to generate plain-language remediation
             guidance for findings. Data sent to the LLM provider is limited
             to already-redacted finding summaries — never raw evidence or
-            account credentials. We do not sell your data.
+            account credentials. We do not currently use an email provider; if
+            that changes we will update this policy before sending any email.
+            We do not sell your data.
           </p>
         </section>
 
         <section className="space-y-2">
           <h2 className="text-lg font-semibold">Your rights</h2>
           <p>
-            You can request a copy of the data we hold about you, ask us to
-            correct it, or ask us to delete your account and associated
-            data, by emailing{" "}
+            You can delete your account yourself under Account in the
+            console. That removes your account, the organisations you own
+            and everything in them, and your sign-in. Things you created in
+            someone else&apos;s organisation stay with that organisation, our
+            security log keeps an anonymous record that you acted, and our
+            payment provider keeps invoices it is required to keep. You can
+            also request a copy of the data we hold about you, or ask us to
+            correct it, by emailing{" "}
             <a href={`mailto:${brand.supportEmail}`} className="underline">
               {brand.supportEmail}
             </a>

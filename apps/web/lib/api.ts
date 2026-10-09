@@ -8,10 +8,20 @@ import type {
   ApiErrorBody,
   ApiKeyCreateResponse,
   ApiKeyResponse,
+  AuditPageResponse,
   BrandingProfileResponse,
+  BillingSummaryResponse,
   CheckoutResponse,
+  DeleteAccountResponse,
+  DeletionBlocker,
   PortalResponse,
   MonitorResponse,
+  OrgInviteCreateResponse,
+  OrgInviteResponse,
+  OrgMemberResponse,
+  OrgProductResponse,
+  OrgResponse,
+  OrgUsageResponse,
   PdfStatusResponse,
   PlanResponse,
   ScanReportResponse,
@@ -42,11 +52,14 @@ export class ApiError extends Error {
 
 async function request<T>(
   path: string,
-  init?: RequestInit & { token?: string | null },
+  init?: RequestInit & { token?: string | null; orgId?: string | null },
 ): Promise<T> {
-  const { token, ...rest } = init ?? {};
+  const { token, orgId, ...rest } = init ?? {};
   const headers = new Headers(rest.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
+  // Which organisation a list/create call acts in; the API defaults to the
+  // caller's personal organisation when this is absent.
+  if (orgId) headers.set("X-Org-Id", orgId);
   if (rest.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -107,6 +120,95 @@ export const api = {
       { method: "POST", token },
     ),
 
+  listOrgs: (token: string) => request<OrgResponse[]>("/v1/orgs", { token }),
+
+  createOrg: (body: { name: string; slug: string }, token: string) =>
+    request<OrgResponse>("/v1/orgs", { method: "POST", token, body: JSON.stringify(body) }),
+
+  listOrgMembers: (orgId: string, token: string) =>
+    request<OrgMemberResponse[]>(`/v1/orgs/${orgId}/members`, { token }),
+
+  listOrgInvites: (orgId: string, token: string) =>
+    request<OrgInviteResponse[]>(`/v1/orgs/${orgId}/invites`, { token }),
+
+  createOrgInvite: (orgId: string, body: { email: string; role: string }, token: string) =>
+    request<OrgInviteCreateResponse>(`/v1/orgs/${orgId}/invites`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
+    }),
+
+  resendOrgInvite: (orgId: string, inviteId: string, token: string) =>
+    request<OrgInviteCreateResponse>(`/v1/orgs/${orgId}/invites/${inviteId}/resend`, {
+      method: "POST",
+      token,
+    }),
+
+  revokeOrgInvite: (orgId: string, inviteId: string, token: string) =>
+    request<void>(`/v1/orgs/${orgId}/invites/${inviteId}`, { method: "DELETE", token }),
+
+  changeMemberRole: (orgId: string, accountId: string, role: string, token: string) =>
+    request<OrgMemberResponse>(`/v1/orgs/${orgId}/members/${accountId}`, {
+      method: "PATCH",
+      token,
+      body: JSON.stringify({ role }),
+    }),
+
+  transferOrgOwnership: (
+    orgId: string,
+    body: { new_owner_account_id: string; confirm_slug: string },
+    token: string,
+  ) =>
+    request<OrgMemberResponse>(`/v1/orgs/${orgId}/transfer-ownership`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
+    }),
+
+  removeOrgMember: (orgId: string, accountId: string, token: string) =>
+    request<void>(`/v1/orgs/${orgId}/members/${accountId}`, { method: "DELETE", token }),
+
+  acceptOrgInvite: (inviteToken: string, token: string) =>
+    request<OrgResponse>(`/v1/invites/${encodeURIComponent(inviteToken)}/accept`, {
+      method: "POST",
+      token,
+    }),
+
+  getAuditLog: (
+    orgId: string,
+    token: string,
+    query: { cursor?: string; action?: string; limit?: number } = {},
+  ) => {
+    const params = new URLSearchParams();
+    if (query.cursor) params.set("cursor", query.cursor);
+    if (query.action) params.set("action", query.action);
+    if (query.limit) params.set("limit", String(query.limit));
+    const qs = params.toString();
+    return request<AuditPageResponse>(`/v1/orgs/${orgId}/audit${qs ? `?${qs}` : ""}`, { token });
+  },
+
+  listOrgProducts: (orgId: string, token: string) =>
+    request<OrgProductResponse[]>(`/v1/orgs/${orgId}/products`, { token }),
+
+  enableOrgProduct: (orgId: string, slug: string, token: string) =>
+    request<OrgProductResponse>(`/v1/orgs/${orgId}/products/${slug}/enable`, {
+      method: "POST",
+      token,
+    }),
+
+  getOrgUsage: (orgId: string, token: string) =>
+    request<OrgUsageResponse[]>(`/v1/orgs/${orgId}/usage`, { token }),
+
+  getDeletionCheck: (token: string) =>
+    request<{ blockers: DeletionBlocker[] }>("/v1/me/deletion-check", { token }),
+
+  deleteAccount: (confirmEmail: string, token: string) =>
+    request<DeleteAccountResponse>("/v1/me/delete", {
+      method: "POST",
+      token,
+      body: JSON.stringify({ confirm_email: confirmEmail }),
+    }),
+
   getMe: (token: string) => request<AccountResponse>("/v1/me", { token }),
 
   getTarget: (targetId: string, token: string) =>
@@ -135,12 +237,14 @@ export const api = {
   getTargetAlerts: (targetId: string, token: string) =>
     request<AlertResponse[]>(`/v1/targets/${targetId}/alerts`, { token }),
 
-  listTargets: (token: string) => request<TargetResponse[]>("/v1/targets", { token }),
+  listTargets: (token: string, orgId?: string | null) =>
+    request<TargetResponse[]>("/v1/targets", { token, orgId }),
 
-  createTarget: (origin: string, token: string) =>
+  createTarget: (origin: string, token: string, orgId?: string | null) =>
     request<TargetResponse>("/v1/targets", {
       method: "POST",
       token,
+      orgId,
       body: JSON.stringify({ origin }),
     }),
 
@@ -159,27 +263,42 @@ export const api = {
 
   listPlans: () => request<PlanResponse[]>("/v1/plans"),
 
-  createCheckout: (planId: string, interval: "month" | "year", token: string) =>
+  createCheckout: (
+    planId: string,
+    interval: "month" | "year",
+    token: string,
+    orgId?: string | null,
+  ) =>
     request<CheckoutResponse>("/v1/billing/checkout", {
       method: "POST",
       token,
+      orgId,
       body: JSON.stringify({ plan_id: planId, interval }),
     }),
 
-  createPortal: (token: string) =>
-    request<PortalResponse>("/v1/billing/portal", { method: "POST", token }),
+  getBillingSummary: (token: string, orgId?: string | null) =>
+    request<BillingSummaryResponse>("/v1/billing/summary", { token, orgId }),
 
-  createApiKey: (name: string, scopes: string[], token: string) =>
+  createPortal: (token: string, orgId?: string | null) =>
+    request<PortalResponse>("/v1/billing/portal", { method: "POST", token, orgId }),
+
+  createApiKey: (name: string, scopes: string[], token: string, orgId?: string | null) =>
     request<ApiKeyCreateResponse>("/v1/me/api-keys", {
       method: "POST",
       token,
+      orgId,
       body: JSON.stringify({ name, scopes }),
     }),
 
-  listApiKeys: (token: string) => request<ApiKeyResponse[]>("/v1/me/api-keys", { token }),
+  listApiKeys: (token: string, orgId?: string | null) =>
+    request<ApiKeyResponse[]>("/v1/me/api-keys", { token, orgId }),
 
-  revokeApiKey: (apiKeyId: string, token: string) =>
-    request<ApiKeyResponse>(`/v1/me/api-keys/${apiKeyId}/revoke`, { method: "POST", token }),
+  revokeApiKey: (apiKeyId: string, token: string, orgId?: string | null) =>
+    request<ApiKeyResponse>(`/v1/me/api-keys/${apiKeyId}/revoke`, {
+      method: "POST",
+      token,
+      orgId,
+    }),
 
   suppressFinding: (
     targetId: string,
@@ -201,8 +320,8 @@ export const api = {
       token,
     }),
 
-  getBrandingProfile: (token: string) =>
-    request<BrandingProfileResponse>("/v1/me/branding-profile", { token }),
+  getBrandingProfile: (token: string, orgId?: string | null) =>
+    request<BrandingProfileResponse>("/v1/me/branding-profile", { token, orgId }),
 
   updateBrandingProfile: (
     body: {
@@ -212,10 +331,12 @@ export const api = {
       custom_domain?: string;
     },
     token: string,
+    orgId?: string | null,
   ) =>
     request<BrandingProfileResponse>("/v1/me/branding-profile", {
       method: "PUT",
       token,
+      orgId,
       body: JSON.stringify(body),
     }),
 };

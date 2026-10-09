@@ -1,0 +1,76 @@
+{
+ "_about": "Themes reviews.py sorts feedback into. Patterns are Python regular expressions, matched case-insensitively against the review text. kind is complaint (something users hate) or request (something users want that is missing). Edit freely: add the app category's own words (for a booking app: double booking, time zone, no-show).",
+ "request_patterns": [
+  "\\bi wish\\b",
+  "\\bplease add\\b",
+  "\\bwould be (nice|great|good|helpful)\\b",
+  "\\bwould love\\b",
+  "\\bneeds? (a|an|the|to|more)\\b",
+  "\\bno way to\\b",
+  "\\bthere'?s no (way|option)\\b",
+  "\\b(can'?t|cannot|unable to) (even )?(add|change|edit|set|choose|export|import|customi[sz]e|connect|undo|delete|turn off)\\b",
+  "\\b(missing|lacks|lacking)\\b",
+  "\\bdoesn'?t (have|support|let|allow)\\b",
+  "\\bif only\\b",
+  "\\bfeature request\\b",
+  "\\bwhy (can'?t|isn'?t|doesn'?t)\\b"
+ ],
+ "themes": [
+  {
+   "id": "pricing",
+   "label": "Price and paywalls",
+   "kind": "complaint",
+   "patterns": [
+    "\\bexpensive\\b",
+    "\\boverpriced\\b",
+    "\\bpric(e|es|ey|ing)\\b",
+    "\\bpaywall",
+    "\\bsubscription\\b",
+    "\\bper (month|seat|user)\\b",
+    "\\bfree (plan|tier|version)\\b",
+    "\\bupgrade to\\b",
+    "\\bpremium\\b",
+    "\\bnot worth\\b",
+    "\\bcost(s|ly)?\\b"
+   ]
+  },
+  {
+   "id": "false_positives",
+   "label": "False positives and noise",
+   "kind": "complaint",
+   "patterns": [
+    "false positives?",
+    "\\bnoise\\b",
+    "\\bquantity of findings",
+    "\\bbusy-?work\\b",
+    "\\bkind of useless\\b",
+    "\\bmeans nothing\\b"
+   ]
+  },
+  {
+   "id": "no_context",
+   "label": "Findings lack context about the actual app",
+   "kind": "complaint",
+   "patterns": [
+    "security model",
+    "for our environment",
+    "reasonably exploitable",
+    "don'?t affect your usage",
+    "grounding"
+   ]
+  },
+  {
+   "id": "vibe_defaults",
+   "label": "Generated apps ship insecure by default",
+   "kind": "complaint",
+   "patterns": [
+    "\\bRLS\\b",
+    "vibe",
+    "not optimized for making things safe",
+    "don'?t have a security background",
+    "wide-open",
+    "anon key"
+   ]
+  }
+ ]
+}

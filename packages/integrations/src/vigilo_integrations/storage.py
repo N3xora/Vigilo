@@ -86,3 +86,23 @@ async def get_report_pdf(report_id: str) -> bytes:
         return await asyncio.to_thread(_get_sync, _report_key(report_id))
     except (BotoCoreError, ClientError) as exc:
         raise ObjectStoreError("failed to fetch report pdf", report_id=report_id) from exc
+
+
+def _delete_sync(key: str) -> None:
+    cfg = config()
+    # S3 delete is idempotent: deleting a key that is not there succeeds.
+    _client().delete_object(Bucket=cfg.object_store_bucket, Key=key)
+
+
+async def delete_evidence_bundle(bundle_id: str) -> None:
+    try:
+        await asyncio.to_thread(_delete_sync, _key(bundle_id))
+    except (BotoCoreError, ClientError) as exc:
+        raise ObjectStoreError("failed to delete evidence bundle", bundle_id=bundle_id) from exc
+
+
+async def delete_report_pdf(report_id: str) -> None:
+    try:
+        await asyncio.to_thread(_delete_sync, _report_key(report_id))
+    except (BotoCoreError, ClientError) as exc:
+        raise ObjectStoreError("failed to delete report pdf", report_id=report_id) from exc

@@ -17,9 +17,13 @@ export function ReportView({
   initialShareLinks?: ShareLinkResponse[];
 }) {
   const showOwnerControls = Boolean(report.is_owner) && !printMode && Boolean(report.scan_job_id);
+  // Accepting a risk is shared with the project's organisation; PDF export,
+  // share links and monitoring stay owner-only.
+  const canAcceptRisks =
+    Boolean(report.is_owner || report.can_accept_risk) && !printMode && Boolean(report.target_id);
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-10">
+    <div className="mx-auto w-full max-w-2xl px-6 py-10">
       <ScoreHeader report={report} />
 
       {showOwnerControls ? (
@@ -39,7 +43,7 @@ export function ReportView({
       <SuppressibleFindings
         initialFindings={report.findings}
         targetId={report.target_id}
-        interactive={showOwnerControls}
+        interactive={canAcceptRisks}
         printMode={printMode}
       />
       <PassedSection findings={report.findings} printMode={printMode} />

@@ -45,7 +45,7 @@ export function SuppressFindingButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="text-xs text-black/50 dark:text-white/50 underline underline-offset-2"
+        className="text-xs text-black/60 dark:text-white/65 underline underline-offset-2"
       >
         Accept risk
       </button>
@@ -74,7 +74,7 @@ export function SuppressFindingButton({
           type="button"
           onClick={() => setOpen(false)}
           disabled={busy}
-          className="shrink-0 text-xs text-black/40 dark:text-white/40"
+          className="shrink-0 text-xs text-black/60 dark:text-white/65"
         >
           Cancel
         </button>

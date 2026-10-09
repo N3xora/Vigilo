@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { api } from "../../../lib/api";
+import { getActiveOrg } from "../../../lib/nexora/data";
 import type { PlanResponse } from "../../../lib/types";
 import { UpgradeButton } from "../../../components/dashboard/UpgradeButton";
+import { BillingOverview } from "../../../components/dashboard/BillingOverview";
 import { ManageSubscriptionButton } from "../../../components/dashboard/ManageSubscriptionButton";
 
 const JWT_TEMPLATE = process.env.NEXT_PUBLIC_CLERK_JWT_TEMPLATE ?? "vigilo-api";
@@ -61,15 +63,31 @@ export default async function DashboardBillingPage({
     redirect("/sign-in");
   }
 
-  const [account, plans] = await Promise.all([api.getMe(token), api.listPlans()]);
-  const currentPlanId = account.entitlements.plan_id;
+  // The plan belongs to the active organisation, not to the person.
+  const [org, plans] = await Promise.all([getActiveOrg(), api.listPlans()]);
+  const currentPlanId = org.entitlements.plan_id;
+  const canManageBilling = org.role === "owner" || org.role === "admin";
+  const summary = canManageBilling ? await api.getBillingSummary(token, org.id) : null;
   const sortedPlans = PLAN_ORDER.map((id) => plans.find((plan) => plan.plan_id === id)).filter(
     (plan): plan is PlanResponse => plan !== undefined,
   );
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Billing</h1>
+      <div>
+        <h1 className="text-2xl font-bold">Billing</h1>
+        <p className="mt-1 text-sm text-black/60 dark:text-white/60">
+          Plan for {org.name}. Everyone in the organisation gets these limits.
+        </p>
+      </div>
+
+      {!canManageBilling ? (
+        <p className="rounded-md border border-black/10 dark:border-white/20 p-3 text-sm">
+          Only owners and admins of {org.name} can change its plan.
+        </p>
+      ) : null}
+
+      {summary ? <BillingOverview summary={summary} /> : null}
 
       {checkout === "success" ? (
         <p className="rounded-md border border-black/10 dark:border-white/20 p-3 text-sm">
@@ -77,7 +95,15 @@ export default async function DashboardBillingPage({
         </p>
       ) : null}
 
-      <div className="overflow-x-auto">
+      <h2 id="plans" className="text-xl font-semibold">
+        Vigilo plans
+      </h2>
+      <div
+        tabIndex={0}
+        role="region"
+        aria-label="Vigilo plan comparison"
+        className="relative overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-nx-accent"
+      >
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b border-black/10 dark:border-white/20">
@@ -108,15 +134,18 @@ export default async function DashboardBillingPage({
                 <td key={plan.plan_id} className="py-3 px-4">
                   {plan.plan_id === currentPlanId ? (
                     <div className="space-y-2">
-                      <span className="text-xs text-black/50 dark:text-white/50">Current plan</span>
-                      {plan.plan_id !== "free" ? <ManageSubscriptionButton /> : null}
+                      <span className="text-xs text-black/60 dark:text-white/65">Current plan</span>
+                      {plan.plan_id !== "free" && canManageBilling ? (
+                        <ManageSubscriptionButton orgId={org.id} />
+                      ) : null}
                     </div>
-                  ) : plan.plan_id === "free" ? null : (
+                  ) : plan.plan_id === "free" || !canManageBilling ? null : (
                     <div className="flex flex-wrap gap-2">
-                      <UpgradeButton planId={plan.plan_id} label="Upgrade monthly" />
+                      <UpgradeButton planId={plan.plan_id} orgId={org.id} label="Upgrade monthly" />
                       {plan.price_cents_yearly > 0 ? (
                         <UpgradeButton
                           planId={plan.plan_id}
+                          orgId={org.id}
                           interval="year"
                           label="Yearly — 2 months free"
                         />
@@ -130,7 +159,7 @@ export default async function DashboardBillingPage({
         </table>
       </div>
 
-      <p className="text-xs text-black/40 dark:text-white/40 max-w-prose">
+      <p className="text-xs text-black/60 dark:text-white/65 max-w-prose">
         Billed monthly or yearly through Stripe. Cancel any time with &ldquo;Manage or cancel&rdquo; &mdash;
         you keep Pro until the end of the period you&rsquo;ve paid for.
       </p>

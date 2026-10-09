@@ -80,3 +80,13 @@ class MoREvent:
     plan_id: str
     status: str
     period_end: datetime | None
+    # Which organisation the subscription pays for (checkout metadata); None
+    # for subscriptions made before organisations, which belong to the
+    # paying account's personal organisation.
+    org_id: str | None = None
+    account_id: str | None = None
+    customer_id: str | None = None
+    # When Stripe created the event, to ignore one that arrives out of order.
+    event_created: datetime | None = None
+    interval: str = "month"
+    cancel_at_period_end: bool = False

@@ -68,7 +68,7 @@ async def test_create_api_key_returns_the_plaintext_once(client, pro_account):
     body = response.json()
     assert body["api_key"].startswith("vglo_")
     assert body["prefix"] == body["api_key"][:12]
-    assert body["scopes"] == ["scan:run", "scan:read"]
+    assert body["scopes"] == ["vigilo:scan:read", "vigilo:scan:run"]
 
 
 async def test_create_api_key_rejects_an_unknown_scope(client, pro_account):
@@ -138,7 +138,19 @@ async def test_revoke_an_unknown_api_key_returns_404(client, pro_account):
 
 
 async def test_api_key_endpoints_require_authentication(client):
-    response = await client.post(
-        "/v1/me/api-keys", json={"name": "x", "scopes": ["scan:read"]}
-    )
+    response = await client.post("/v1/me/api-keys", json={"name": "x", "scopes": ["scan:read"]})
     assert response.status_code == 401
+
+
+async def test_product_qualified_scopes_are_accepted_and_other_products_rejected(
+    client, pro_account
+) -> None:
+    qualified = await client.post(
+        "/v1/me/api-keys", json={"name": "q", "scopes": ["vigilo:report:read"]}
+    )
+    assert qualified.status_code == 201
+    assert qualified.json()["scopes"] == ["vigilo:report:read"]
+    other_product = await client.post(
+        "/v1/me/api-keys", json={"name": "x", "scopes": ["sentinel:scan:run"]}
+    )
+    assert other_product.status_code == 422

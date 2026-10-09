@@ -6,7 +6,18 @@ ultimately belongs to. Depends on core + persistence only.
 
 from __future__ import annotations
 
-from vigilo_identity.models import Account, ApiKey, BrandingProfile, Subscription
+from vigilo_identity.models import (
+    Account,
+    ApiKey,
+    BrandingProfile,
+    Membership,
+    MemberWithEmail,
+    Organization,
+    OrgInvite,
+    ProductEnablement,
+    Subscription,
+    UsageCounter,
+)
 from vigilo_identity.repository import (
     count_api_keys_for_account,
     create_api_key,
@@ -26,6 +37,12 @@ from vigilo_identity.repository import (
 )
 
 __all__ = [
+    "MemberWithEmail",
+    "Membership",
+    "OrgInvite",
+    "Organization",
+    "ProductEnablement",
+    "UsageCounter",
     "Account",
     "Subscription",
     "ApiKey",

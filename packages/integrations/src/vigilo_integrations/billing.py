@@ -91,7 +91,12 @@ async def create_checkout_url(
     cancel_url: str,
     interval: str = "month",
     transport: httpx.AsyncBaseTransport | None = None,
+    org_id: str | None = None,
+    customer_id: str | None = None,
 ) -> str:
+    """`org_id` is the organisation that will own the subscription;
+    `customer_id`, when the organisation has paid before, reuses its Stripe
+    customer so an organisation never ends up with two."""
     cfg = config()
     if not cfg.stripe_secret_key:
         raise BillingProviderError("Stripe is not configured (missing secret key)")
@@ -107,7 +112,6 @@ async def create_checkout_url(
         "mode": "subscription",
         "line_items[0][price]": price_id,
         "line_items[0][quantity]": "1",
-        "customer_email": account_email,
         "client_reference_id": account_reference,
         # Copied by Stripe onto the Subscription, so every
         # customer.subscription.* event carries it back to the webhook —
@@ -117,6 +121,12 @@ async def create_checkout_url(
         "success_url": success_url,
         "cancel_url": cancel_url,
     }
+    if customer_id:
+        form["customer"] = customer_id
+    else:
+        form["customer_email"] = account_email
+    if org_id:
+        form["subscription_data[metadata][vigilo_org_id]"] = org_id
 
     try:
         async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT, transport=transport) as client:

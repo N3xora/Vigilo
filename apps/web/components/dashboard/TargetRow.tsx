@@ -22,7 +22,7 @@ export function TargetRow({
         {isActive ? (
           <span className="text-xs text-severity-pass">Verified</span>
         ) : (
-          <span className="text-xs text-black/50 dark:text-white/50">Unverified</span>
+          <span className="text-xs text-black/60 dark:text-white/65">Unverified</span>
         )}
       </div>
 
