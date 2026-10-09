@@ -7,9 +7,7 @@ import { getActiveOrg, listMyOrgs } from "../../lib/nexora/data";
 
 export default async function DashboardLayout({ children }: LayoutProps<"/dashboard">) {
   const { userId } = await auth();
-  if (!userId) {
-    redirect("/sign-in");
-  }
+  if (!userId) redirect("/sign-in");
 
   const orgs = await listMyOrgs();
   const active = await getActiveOrg();

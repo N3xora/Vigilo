@@ -6,7 +6,7 @@
 
 | check | result | detail |
 | --- | --- | --- |
-| Browser tests (`npx playwright test`) | **pass: 93 passed, 15 skipped on purpose** (rerun 2026-10-09, 0 failed; run under `caffeinate -d -i -s` on macOS, see build-log) (desktop and mobile; real Clerk dev instance; real API, scanner worker and Postgres; axe on every page) | Covers public pages, sign-in, console, dashboard, members and invites, role change and removal (a second member added directly to the test database, never at Clerk), organisation switching and per-org isolation, the launcher's Enable, org creation, targets, API-key and checkout error handling, audit log, account-deletion form validation, and a real scan to a finished report with accept-risk and restore. **Not covered:** accepting an invitation as a second person, billing against real Stripe, invitation email, PDF export in the browser suite, share links and monitoring (need a Pro plan), and a real account deletion (never run against a real person's account). |
+| Browser tests (`npx playwright test`) | **pass: 93 passed, 15 skipped on purpose** (rerun 2026-10-10 on the merged tree, 0 failed; run under `caffeinate -d -i -s` on macOS, see build-log) (desktop and mobile; real Clerk dev instance; real API, scanner worker and Postgres; axe on every page) | Covers public pages, sign-in, console, dashboard, members and invites, role change and removal (a second member added directly to the test database, never at Clerk), organisation switching and per-org isolation, the launcher's Enable, org creation, targets, API-key and checkout error handling, audit log, account-deletion form validation, and a real scan to a finished report with accept-risk and restore. **Not covered:** accepting an invitation as a second person, billing against real Stripe, invitation email, PDF export in the browser suite, share links and monitoring (need a Pro plan), and a real account deletion (never run against a real person's account). |
 | Parity (`parity.py`) | **pass, with a caveat** | 95.9 / 100, 13 of 13 must-haves (rule: all must-haves, 80+). The jump from 77.3 comes from rescoping to the one product that exists (the other four engines are separate projects, now marked "Coming soon" and not enableable), not from new features; see `parity.md`. |
 | Rebrand sweep | pass (rerun 2026-10-09) | clean for the competitor names in `brand.json`. Does not cover the unresolved vigilo.io / Nexora questions below. |
 | Store listing (`listing.py`) | n/a | no mobile app. |
@@ -70,7 +70,7 @@ A live Stripe secret key was pasted into the chat and later written to `.env`. I
 
 **DNS:** proposal and exact record table in `replica/dns.md` (app. and api. under onenexora.com, mail from scans@onenexora.com). Waiting for your domain decision and the VPS IP.
 
-**Clerk production:** step-by-step in `replica/clerk-production.md` (domain `app.onenexora.com`, JWT template `vigilo-api` with an `email` claim, JWKS URL, rebuild the web image after setting the publishable key).
+**Clerk production:** step-by-step in `replica/clerk-production.md` (domain `vigilo.onenexora.com`, JWT template `vigilo-api` with an `email` claim, JWKS URL, rebuild the web image after setting the publishable key).
 
 **Postmark:** step-by-step in `replica/postmark-setup.md` (verify onenexora.com, merge the SPF record with Google Workspace's, sender scans@, server token to the server env).
 
@@ -79,7 +79,7 @@ A live Stripe secret key was pasted into the chat and later written to `.env`. I
 Each step names its guide. Stop at the first failure.
 
 1. **Decide the name and domain.** Nexora trademark; `onenexora.com` as the home (`dns.md`).
-2. **DNS at Squarespace**: A records `app` and `vigilo-api` to `92.5.69.99` (`dns.md`). Check with `dig +short A app.onenexora.com`. *`app` resolves as of 2026-10-09; `vigilo-api` already answers but with something else (see dns.md).*
+2. **DNS at Squarespace**: A records `app` and `vigilo-api` to `92.5.69.99` (`dns.md`). Check with `dig +short A vigilo.onenexora.com`. *`app` resolves as of 2026-10-09; `vigilo-api` already answers but with something else (see dns.md).*
 3. **Mailboxes** in Google Workspace: `support@`, `abuse@`, `security@onenexora.com` (the `scans@` sender is only needed once Postmark is on).
 4. **Clerk production instance** and its DNS records (`clerk-production.md`). Verify goes green.
 5. ~~**Postmark**~~ **skipped by the owner (2026-10-09).** Leave `POSTMARK_SERVER_TOKEN` empty. The app runs without it: invitation, monitoring-alert and scan-report emails are not sent and each caller handles that without an error page (invitations report `email_status` as `not_configured`; the invite link is still returned and can be shared by hand). Revisit with `postmark-setup.md` when email matters.
@@ -87,8 +87,8 @@ Each step names its guide. Stop at the first failure.
 7. **First start**: `docker compose up -d --build`, then `./scripts/deploy.sh` (runs the migrations).
 8. **Existing Caddy**: add the two site blocks from `Caddyfile.external-proxy.example`, `caddy validate`, reload.
 9. **Stripe webhook**: `uv run python scripts/stripe_setup.py --mode live --apply --webhook-url https://vigilo-api.onenexora.com/v1/billing/webhook` from your own shell; put the printed signing secret in the server `.env` and redeploy.
-10. **Smoke check**: `./scripts/smoke.sh https://app.onenexora.com https://vigilo-api.onenexora.com` must print `all checks passed`.
+10. **Smoke check**: `./scripts/smoke.sh https://vigilo.onenexora.com https://vigilo-api.onenexora.com` must print `all checks passed`.
 11. **First real run**: sign up with your own email, run a scan on a site you own, invite a second address you own and check the email arrives, then buy Pro with your own card and refund it.
-12. **Watch**: schedule `scripts/backup.sh`, copy the tarballs off the machine and test one restore; add an uptime monitor on `https://app.onenexora.com/` and `https://vigilo-api.onenexora.com/healthz`; set `SENTRY_DSN`.
+12. **Watch**: schedule `scripts/backup.sh`, copy the tarballs off the machine and test one restore; add an uptime monitor on `https://vigilo.onenexora.com/` and `https://vigilo-api.onenexora.com/healthz`; set `SENTRY_DSN`.
 
 **Server shortcut:** `scripts/vps_setup.sh` does steps 6 to 8 on the server in one go (`git clone https://github.com/N3xora/Vigilo.git && cd Vigilo && ./scripts/vps_setup.sh`). It writes `.env` from `.env.production.example`, generates the two internal passwords, asks for the Clerk and Stripe secrets with hidden input, sets external-proxy mode, refuses to run if ports 3000/8000 are taken, starts the stack, runs the migrations, and prints the Caddy blocks for your hostnames. It never overwrites an existing `.env`. Tested here only with `--no-start` and fake inputs; the Docker part has not run.

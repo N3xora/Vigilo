@@ -28,7 +28,7 @@ jobs:
     # Object storage is not a service container: no MinIO image can be relied on
     # (bitnami/minio was removed from Docker Hub, quay.io/minio now answers
     # 401 to anonymous pulls), so a step below starts moto's S3-compatible
-    # server from the dev dependencies. The self-hosted stack still runs MinIO.
+    # server from the dev dependencies. The self-hosted compose files use a different S3 stand-in.
     services:
       postgres:
         image: postgres:16-alpine
@@ -54,8 +54,8 @@ jobs:
       DATABASE_URL: postgresql://vigilo:vigilo-dev-secret@localhost:5432/vigilo
       REDIS_URL: redis://localhost:6379/0
       OBJECT_STORE_ENDPOINT: http://localhost:9000
-      OBJECT_STORE_ACCESS_KEY: vigilo
-      OBJECT_STORE_SECRET_KEY: vigilo-dev-secret
+      OBJECT_STORE_ACCESS_KEY: test
+      OBJECT_STORE_SECRET_KEY: test
       OBJECT_STORE_BUCKET: vigilo-evidence
       # render_pdf() reads this to build the Playwright navigation URL — CI
       # never launches a real browser (render_pdf's own tests inject a fake
@@ -85,8 +85,8 @@ jobs:
           client = boto3.client(
               's3',
               endpoint_url='http://localhost:9000',
-              aws_access_key_id='vigilo',
-              aws_secret_access_key='vigilo-dev-secret',
+              aws_access_key_id='test',
+              aws_secret_access_key='test',
               region_name='us-east-1',
           )
           try:
@@ -154,6 +154,17 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://vigilo:vigilo-dev-secret@localhost:5432/vigilo
+      # run_scan_job() unconditionally calls put_evidence_bundle(), which
+      # raises an uncaught StructuredError if object storage isn't
+      # configured at all — these point at nothing reachable (no minio
+      # service here, unlike the `test` job), but that's enough: a real
+      # connection failure is caught as ObjectStoreError and logged as a
+      # warning (jobs.py), which this suite's own assertions (tier and
+      # findings only, never bundle_id) don't depend on either way.
+      OBJECT_STORE_ENDPOINT: http://localhost:9000
+      OBJECT_STORE_ACCESS_KEY: vigilo
+      OBJECT_STORE_SECRET_KEY: vigilo-dev-secret
+      OBJECT_STORE_BUCKET: vigilo-evidence
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
@@ -199,6 +210,29 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+
+  # Nothing previously caught a broken or misformatted Caddyfile before
+  # docs/self-hosting.md's "Production VPS deployment" path hit it —
+  # the first signal would otherwise be `docker compose up` crash-looping
+  # the caddy service on a self-hoster's own box. WEB_DOMAIN/API_DOMAIN
+  # are dummy values here only to satisfy the Caddyfile's `{$WEB_DOMAIN}`/
+  # `{$API_DOMAIN}` substitution during `caddy validate` — this checks the
+  # config is well-formed, not that any real domain is reachable.
+  caddy:
+    name: Caddyfile (fmt + validate)
+    runs-on: ubuntu-latest
+    env:
+      WEB_DOMAIN: example.com
+      API_DOMAIN: api.example.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: caddy fmt --diff
+        run: docker run --rm -v "$PWD/Caddyfile:/Caddyfile:ro" caddy:2-alpine caddy fmt --diff /Caddyfile
+      - name: caddy validate
+        run: |
+          docker run --rm -v "$PWD/Caddyfile:/Caddyfile:ro" \
+            -e WEB_DOMAIN -e API_DOMAIN \
+            caddy:2-alpine caddy validate --config /Caddyfile --adapter caddyfile
 
   # Phase 9 (docs/self-hosting.md): a broken Dockerfile should fail CI, not
   # surface for the first time when a self-hoster tries to build one. Builds

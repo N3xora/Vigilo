@@ -5,7 +5,7 @@ needs and from the dev instance's JWT template (read-only).
 
 > **Status 2026-10-09:** the instance was created on the apex `onenexora.com` (DNS records and the JWKS at
 > `clerk.onenexora.com` are live). That works; the session cookie then covers subdomains, including `app.`.
-> Set `CLERK_JWKS_URL=https://clerk.onenexora.com/.well-known/jwks.json`, allow `https://app.onenexora.com`
+> Set `CLERK_JWKS_URL=https://clerk.onenexora.com/.well-known/jwks.json`, allow `https://vigilo.onenexora.com`
 > as an origin, and make sure the `vigilo-api` JWT template exists in this instance.
 
 ## 1. Create the production instance
@@ -13,7 +13,7 @@ needs and from the dev instance's JWT template (read-only).
 In the Clerk dashboard, open the application and choose **Create production instance**.
 Clone settings from development when offered.
 
-- **Domain:** use `app.onenexora.com`. The session cookie then stays on `app.` and the existing
+- **Domain:** use `vigilo.onenexora.com`. The session cookie then stays on `app.` and the existing
   site on the apex is untouched. (If you pick the apex instead, the cookie covers every
   subdomain, including the other site.)
 - Production needs a domain you own; the `*.clerk.accounts.dev` domain is development only.
@@ -33,7 +33,7 @@ can take minutes to a few hours), and do not proxy or flatten them.
 | JWT template, claims | `{"email": "{{user.primary_email_address}}"}` | The API reads `email` from the token. This is the dev template's only claim. |
 | JWT template, lifetime / skew | 60 seconds / 5 seconds | Same as dev. |
 | Sign-in identifiers | Email address | The app identifies people by email. |
-| Allowed origin | `https://app.onenexora.com` | Production browser requests. |
+| Allowed origin | `https://vigilo.onenexora.com` | Production browser requests. |
 | Organizations (Clerk's feature) | leave off | Organisations, roles and invites are the app's own. |
 
 If the production template is not created, every signed-in API call returns 401.
@@ -57,7 +57,7 @@ Put these in the server's `.env` only. The publishable key is baked into the web
 # the JWKS answers 200 and lists keys
 curl -s -o /dev/null -w "%{http_code}\n" "$CLERK_JWKS_URL"
 # after deploy: the sign-in page loads and a sign-up works end to end
-curl -sI https://app.onenexora.com/sign-in | head -1
+curl -sI https://vigilo.onenexora.com/sign-in | head -1
 ```
 
 Then sign up once with your own email, open `/console`, and confirm the API call succeeds (no

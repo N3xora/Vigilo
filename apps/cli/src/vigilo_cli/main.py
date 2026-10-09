@@ -8,7 +8,10 @@ the process exit non-zero when a failed finding meets or exceeds a given
 severity, for CI gating — this is the only flag that changes the exit
 code; the scan itself and its output are identical either way, so
 `--sarif --fail-on high` produces both the CI artifact and the pass/fail
-decision from a single live scan, never two.
+decision from a single live scan, never two. `--json-out PATH` writes the
+JSON report alongside whatever stdout format was chosen, so e.g.
+`--sarif --json-out report.json` gets the SARIF upload and a JSON report
+for a PR comment from that same single scan too.
 """
 
 from __future__ import annotations
@@ -25,7 +28,7 @@ from vigilo_core.evidence import EvidenceBundle
 from vigilo_core.models import CheckManifest, Finding, Score, Verdict
 from vigilo_probes import run_probes
 from vigilo_probes.store import LocalFileEvidenceStore
-from vigilo_reporting import build_sarif_report
+from vigilo_reporting import build_pr_comment_markdown, build_sarif_report
 
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
@@ -52,14 +55,17 @@ def _print_human(bundle: EvidenceBundle, findings: list[Finding], result: Score)
             print(f"  {f.check_id}  {f.summary}")
 
 
-def _print_json(bundle: EvidenceBundle, findings: list[Finding], result: Score) -> None:
-    payload = {
+def _json_payload(bundle: EvidenceBundle, findings: list[Finding], result: Score) -> dict:
+    return {
         "target_origin": bundle.target_origin,
         "bundle_id": bundle.bundle_id,
         "score": json.loads(result.model_dump_json()),
         "findings": [json.loads(f.model_dump_json()) for f in findings],
     }
-    print(json.dumps(payload, indent=2))
+
+
+def _print_json(bundle: EvidenceBundle, findings: list[Finding], result: Score) -> None:
+    print(json.dumps(_json_payload(bundle, findings, result), indent=2))
 
 
 def _print_sarif(
@@ -103,8 +109,34 @@ def _cmd_scan(args: argparse.Namespace) -> int:
     else:
         _print_human(bundle, findings, result)
 
+    if args.json_out:
+        with open(args.json_out, "w") as f:
+            json.dump(_json_payload(bundle, findings, result), f, indent=2)
+
     if args.fail_on and _breaches_threshold(findings, args.fail_on):
         return 1
+    return 0
+
+
+def _cmd_render_pr_comment(args: argparse.Namespace) -> int:
+    """Reads the `--json-out` payload a prior `scan` run wrote and renders
+    it as GitHub PR-comment markdown. A separate command rather than a
+    `scan` output mode because it needs no network access and no fresh
+    scan — it is pure rendering over a result `scan` already produced,
+    matching `.github/actions/scan`'s one-scan-produces-everything design
+    (the composite action's comment step runs this against the same
+    `--json-out` file the SARIF-producing scan step already wrote)."""
+    with open(args.json_in) as f:
+        payload = json.load(f)
+
+    findings = [Finding.model_validate(f) for f in payload["findings"]]
+    score = Score.model_validate(payload["score"])
+    manifests_by_check_id = {c.manifest.check_id: c.manifest for c in REGISTRY}
+
+    markdown = build_pr_comment_markdown(
+        payload["target_origin"], findings, manifests_by_check_id, score
+    )
+    print(markdown)
     return 0
 
 
@@ -134,7 +166,24 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument(
         "--save-evidence", metavar="DIR", help="Save the sealed evidence bundle under DIR"
     )
+    scan_parser.add_argument(
+        "--json-out",
+        metavar="PATH",
+        help=(
+            "Also write the machine-readable JSON report to PATH, independent of "
+            "--json/--sarif (which control stdout). Lets one scan produce both a "
+            "SARIF upload and a JSON report to post as a PR comment, for example."
+        ),
+    )
     scan_parser.set_defaults(func=_cmd_scan)
+
+    render_comment_parser = subparsers.add_parser(
+        "render-pr-comment", help="Render a prior scan's --json-out file as PR-comment markdown"
+    )
+    render_comment_parser.add_argument(
+        "--json-in", metavar="PATH", required=True, help="Path to a scan's --json-out file"
+    )
+    render_comment_parser.set_defaults(func=_cmd_render_pr_comment)
 
     return parser
 

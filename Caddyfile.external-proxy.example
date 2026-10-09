@@ -17,7 +17,7 @@
 # Caddy issues the certificates for both names itself once their DNS points at
 # this VPS, so create the A records first.
 
-app.onenexora.com {
+vigilo.onenexora.com {
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:3000
 	# B) reverse_proxy vigilo-self-host-web-1:3000

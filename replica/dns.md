@@ -1,5 +1,10 @@
 # Domain and DNS records
 
+> **Decision 2026-10-10: the web host is `vigilo.onenexora.com`** (matching the domain already chosen on
+> `origin/main`), not `app.onenexora.com`. Wherever the text below says `app.onenexora.com`, read
+> `vigilo.onenexora.com`. **DNS action:** add an A record `vigilo` → `92.5.69.99` (the `app` record is no
+> longer needed). The API host is still undecided: `vigilo-api.onenexora.com` is occupied by something else.
+
 No domain has been chosen yet, so this uses a proposal built on `onenexora.com`, which you
 said is your platform site. Swap in your own names if you decide differently. Anything in
 `<angle brackets>` is a value only you can get (your VPS, Clerk, Postmark).

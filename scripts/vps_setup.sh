@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # First-time production setup on the VPS, run BY YOU on the server, from the repo root:
 #   git clone https://github.com/N3xora/Vigilo.git && cd Vigilo
-#   ./scripts/vps_setup.sh [--web-host app.onenexora.com] [--api-host vigilo-api.onenexora.com] [--no-start]
+#   ./scripts/vps_setup.sh [--web-host vigilo.onenexora.com] [--api-host vigilo-api.onenexora.com] [--no-start]
 #
 # Builds .env from .env.production.example: generates the two internal passwords, asks for the
 # secrets with hidden input (they never echo, never go on a command line, and are never sent
@@ -10,7 +10,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-WEB_HOST=app.onenexora.com
+WEB_HOST=vigilo.onenexora.com
 API_HOST=vigilo-api.onenexora.com
 START=1
 while [ $# -gt 0 ]; do

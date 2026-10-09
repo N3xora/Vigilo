@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Post-deploy smoke check: read-only GETs against the live URLs, no credentials.
-#   ./scripts/smoke.sh https://app.onenexora.com https://vigilo-api.onenexora.com
+#   ./scripts/smoke.sh https://vigilo.onenexora.com https://vigilo-api.onenexora.com
 # Exits non-zero if any check fails.
 set -uo pipefail
 

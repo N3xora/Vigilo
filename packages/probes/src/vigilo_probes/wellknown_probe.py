@@ -19,7 +19,7 @@ from vigilo_security.egress_guard import Resolver, ValidatedConnection, validate
 
 _REQUEST_TIMEOUT = 10.0
 _MAX_BYTES = 64 * 1024  # a hostile target returning gigabytes at /robots.txt is still bounded
-_USER_AGENT = "VigiloScanner/0.1 (+https://app.onenexora.com/aup)"
+_USER_AGENT = "VigiloScanner/0.1 (+https://vigilo.onenexora.com/aup)"
 
 _PATHS = {
     "security_txt_present": "/.well-known/security.txt",
