@@ -1,0 +1,41 @@
+# Uptime check for production. Runs scripts/smoke.sh against the live URLs every
+# 10 minutes; a failed run emails the person who last edited this file (GitHub's
+# standard "workflow run failed" notification). It retries once after 60 seconds
+# so a single network blip does not alert.
+#
+# Limits worth knowing: GitHub's scheduler is best-effort (runs can start several
+# minutes late or be skipped under load) and it disables scheduled workflows after
+# 60 days without repository activity. It checks reachability and correctness from
+# GitHub's network, not from inside the host.
+name: uptime
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    # Never on forks: they have no business probing this host.
+    if: github.repository == 'N3xora/Vigilo'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      WEB_URL: https://vigilo.onenexora.com
+      API_URL: https://vigilo-api.onenexora.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Smoke check (one retry)
+        run: |
+          if ! ./scripts/smoke.sh "$WEB_URL" "$API_URL"; then
+            echo "First attempt failed; retrying in 60 seconds."
+            sleep 60
+            ./scripts/smoke.sh "$WEB_URL" "$API_URL"
+          fi
