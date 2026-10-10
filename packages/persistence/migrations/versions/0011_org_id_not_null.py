@@ -1,11 +1,11 @@
 """Step 3 of the tenancy migration: `org_id` becomes NOT NULL on projects,
 subscriptions, api_keys and branding_profiles. Every writer now stamps the
 creator's personal org (`personal_org_id()`); this migration first repairs
-anything written between 0009 and that deploy — accounts created since the
+anything written between 0010 and that deploy — accounts created since the
 backfill have no personal org, and their rows have `org_id IS NULL`.
 
-Revision ID: 0010
-Revises: 0009
+Revision ID: 0011
+Revises: 0010
 Create Date: 2026-10-07 18:00:00.000000
 """
 
@@ -15,8 +15,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0010"
-down_revision: str | None = "0009"
+revision: str = "0011"
+down_revision: str | None = "0010"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -92,3 +92,21 @@ Each step names its guide. Stop at the first failure.
 12. **Watch**: schedule `scripts/backup.sh`, copy the tarballs off the machine and test one restore; add an uptime monitor on `https://vigilo.onenexora.com/` and `https://vigilo-api.onenexora.com/healthz`; set `SENTRY_DSN`.
 
 **Server shortcut:** `scripts/vps_setup.sh` does steps 6 to 8 on the server in one go (`git clone https://github.com/N3xora/Vigilo.git && cd Vigilo && ./scripts/vps_setup.sh`). It writes `.env` from `.env.production.example`, generates the two internal passwords, asks for the Clerk and Stripe secrets with hidden input, sets external-proxy mode, refuses to run if ports 3000/8000 are taken, starts the stack, runs the migrations, and prints the Caddy blocks for your hostnames. It never overwrites an existing `.env`. Tested here only with `--no-start` and fake inputs; the Docker part has not run.
+
+## 2026-10-10: this is an update, not a first deploy
+
+A Vigilo deployment already runs on `92.5.69.99`: `https://vigilo.onenexora.com` serves an older build of this web app (Next.js behind Caddy, Clerk **production** key, `noindex`; `/trust`, `/pricing` and `/products/vigilo` return 404), and `vigilo-api.onenexora.com` is very likely its API (`/healthz` ok, no `/v1/orgs`). `origin/main` now contains this work (pull request #9 from `deploy-prep` was merged on 2026-10-10).
+
+So do **not** run `scripts/vps_setup.sh` there: it refuses to overwrite `.env` and aborts on ports 3000/8000. Update the existing checkout instead:
+
+1. `docker compose ps` and `git log -1` in the existing checkout: confirm which commit runs.
+2. **Database revision (checked 2026-10-10: production is at `0009`, upstream's `0009_org_accounts`).** The migrations were renumbered to 0010-0017 behind it, so `./scripts/deploy.sh` is safe to run once that fix is merged. Original check: `docker compose exec api uv run alembic -c packages/persistence/alembic.ini current`. If it prints `0009_org_accounts` (upstream's migration, dropped in the merge), the upgrade will fail with an unknown revision; stop and see the build log.
+3. `./scripts/backup.sh`, and copy the tarball off the machine.
+4. `git pull` on `main`, then `./scripts/deploy.sh` (pulls, rebuilds, migrates).
+5. Set the new env values if missing (`.env.production.example` lists them); the existing Clerk production keys stay.
+6. `./scripts/smoke.sh https://vigilo.onenexora.com https://vigilo-api.onenexora.com`.
+
+### Production state found on 2026-10-10
+- `/opt/vigilo` runs `ebe4106` (upstream `main` before pull request #9). Database revision `0009`.
+- `/opt/vigilo/.env` uses `STRIPE_PRICE_ID_PRO=price_1UKKeS...` and `STRIPE_PRICE_ID_PRO_YEARLY=price_1UKKlh...`. The product, prices and portal that `stripe_setup.py` created on 2026-10-09 (`price_1UOfNw...`, `price_1UOfNx...`) are **not** referenced there. Decide which set to keep, then archive the other in Stripe and set the env to match. Do not change the env while subscriptions exist on the old prices without checking: the webhook maps price IDs to plans.
+- The server also runs the Nexora platform from `/opt/nexora` (`deploy.sh nexora console api ...`). Check it does not depend on upstream's NEXORA Core billing sync (`/v1/internal/org-plan`), which this branch removed.

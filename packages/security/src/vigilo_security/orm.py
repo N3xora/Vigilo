@@ -24,7 +24,7 @@ class AuditEventRow(Base):
     __tablename__ = "audit_events"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    # Deliberately not a foreign key (migration 0016): the trail must outlive
+    # Deliberately not a foreign key (migration 0017): the trail must outlive
     # the account it names, and the table is append-only.
     account_id: Mapped[uuid.UUID | None] = mapped_column(index=True, default=None)
     # Which organisation the event belongs to. Not a foreign key: the table is

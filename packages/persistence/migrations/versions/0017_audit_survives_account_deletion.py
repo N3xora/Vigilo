@@ -4,8 +4,8 @@ foreign key to `accounts`, which would make deleting an account impossible
 Dropping the constraint keeps the security record, which then holds only a
 pseudonymous id for a deleted person; readers show it as "Former member".
 
-Revision ID: 0016
-Revises: 0015
+Revision ID: 0017
+Revises: 0016
 Create Date: 2026-10-09 09:00:00.000000
 """
 
@@ -15,8 +15,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0016"
-down_revision: str | None = "0015"
+revision: str = "0017"
+down_revision: str | None = "0016"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -3,14 +3,14 @@
 Scope done: step 1 of the tenancy migration plus the org API. Stack unchanged (FastAPI, SQLAlchemy, Alembic, Clerk, Stripe, Postmark).
 
 ## Built
-- Migration `0009_organizations`: organizations, memberships (one-owner partial unique index), product_enablements, usage_counters, org_invites; nullable `org_id` on projects, subscriptions, api_keys, branding_profiles; `product_slug` and `billing_interval` on subscriptions; backfills a personal org + owner membership + Vigilo enablement per account. Tested on a database holding existing rows: backfill correct, downgrade/upgrade round-trips, `alembic check` shows no drift.
+- Migration `0010_organizations`: organizations, memberships (one-owner partial unique index), product_enablements, usage_counters, org_invites; nullable `org_id` on projects, subscriptions, api_keys, branding_profiles; `product_slug` and `billing_interval` on subscriptions; backfills a personal org + owner membership + Vigilo enablement per account. Tested on a database holding existing rows: backfill correct, downgrade/upgrade round-trips, `alembic check` shows no drift.
 - `vigilo_identity.org_repository`: create/list orgs, lazy `ensure_personal_org`, members, role changes, invites (sha256 token at rest, shown once, 7-day expiry, bound to invitee email), product enablement, atomic usage counters (upsert-increment).
 - API (`routers/orgs.py`, 11 routes) with `require_org_role(min)` guard: non-member -> 404, below role -> 403.
 - 8 new tests (`apps/api/tests/test_orgs.py`): cross-org access returns 404 on every route, invite flow and role gates, wrong-email invite rejected, owner immutable, enablement, 10 concurrent usage increments sum to 10.
 - Full suite: 668 passed, 5 failed -> 1 fixed (expected-tables test updated), 4 remain: object-storage tests; MinIO image cannot be pulled here (quay.io 401). Not related to this change, not verified green.
 
 ## Update: cutover pass (items 1, 2, 4)
-- 0010_org_id_not_null: repairs rows written after 0009 (accounts without a personal org, null org_id), then `org_id` NOT NULL on projects, subscriptions, api_keys, branding_profiles. Tested on a populated scratch DB incl. downgrade/upgrade and `alembic check`.
+- 0011_org_id_not_null: repairs rows written after 0010 (accounts without a personal org, null org_id), then `org_id` NOT NULL on projects, subscriptions, api_keys, branding_profiles. Tested on a populated scratch DB incl. downgrade/upgrade and `alembic check`.
 - All four writers stamp the creator's personal org (`personal_org_id()`); tests in `test_org_stamping.py`.
 - Vigilo scans are metered into `usage_counters` in the same transaction as the scan job, on `/v1/scans` and `/public/v1/scans`; denied scans are not counted (`test_usage_metering.py`). Quotas still use the old rolling count.
 - Web console now calls the real org endpoints; org switcher (cookie preference, membership re-checked), create-org form, enable-product button.
@@ -73,10 +73,10 @@ Scope done: step 1 of the tenancy migration plus the org API. Stack unchanged (F
 - Tests: `test_audit_log.py` (8): actions and details recorded, secrets/tokens absent, admin-only and 404 for outsiders, per-org isolation, pagination and filter, legacy events, system actors.
 - Not done: export, retention policy, a way for the owner to see failed sign-ins (Clerk holds those), events for actions that still write nothing (scan submissions through the API record only authorisation/denial, API-key use is not logged), per-event detail view.
 
-## Pre-deploy fixes (2026-10-09, migration 0016)
+## Pre-deploy fixes (2026-10-09, migration 0017)
 - **Account deletion.** `GET /v1/me/deletion-check` and `POST /v1/me/delete` (type your own email). Blocked, with the reason, while an organisation you own still has other members or a paid plan that is still renewing (a plan set to end is fine). Deletes, in one transaction: the account, every organisation you own with all its targets, scans, findings, reports, share links, monitors, alerts, risks, keys, branding, plans, usage, invitations and memberships; your memberships elsewhere. Things you created in someone else's organisation are handed to that organisation's owner as "created by". After the commit: stored evidence and report files are removed and the Clerk user is deleted, both best-effort and reported (`storage_cleanup`, `identity_removed`); a failure there never undoes the deletion.
 - **What stays**, stated on the account page, in the privacy policy and `docs/self-hosting.md`: the append-only audit log (pseudonymous id, shown as "Former member"; the deletion itself is logged without an address), other organisations' data, Stripe customers and invoices.
-- Migration 0016 drops the foreign key from `audit_events.account_id` so the trail can outlive the account. Verified on a populated table: the account deletes, the event stays, the append-only trigger still blocks updates. Downgrade refuses once such orphaned events exist, by design.
+- Migration 0017 drops the foreign key from `audit_events.account_id` so the trail can outlive the account. Verified on a populated table: the account deletes, the event stays, the append-only trigger still blocks updates. Downgrade refuses once such orphaned events exist, by design.
 - Tests: `test_account_deletion.py` (10): full removal, audit survival, email confirmation, member and plan blockers, kept team data, isolation between people, outside failures not undoing the deletion, the Clerk call.
 - **Ownership transfer does not exist**, so an owner with a team must remove every other member before deleting their account. Add transfer before real teams use this.
 - **Error tracking**: `vigilo_core.observability.init_error_tracking()` in the API and scanner, off unless `SENTRY_DSN` is set (`.env.example`, compose pass-through). When on: no PII, no request bodies, headers, cookies, query strings or local variables, one-time link tokens redacted from URLs, no tracing. 7 tests with a fake SDK; never sent to a real Sentry. Not added to the web app (needs a heavier SDK and a decision on browser data).
@@ -97,3 +97,5 @@ Scope done: step 1 of the tenancy migration plus the org API. Stack unchanged (F
 - Tests: `test_ownership_transfer.py` (10) and browser spec S-TEAM-6.
 
 - Update: the 4 object-storage tests pass against moto (784 passed, 0 failed). CI uses `moto_server` on :9000.
+
+- 2026-10-10: renumbered. Production runs upstream's `0009_org_accounts` (revision `0009`, adds `accounts.clerk_org_id` and `contact_email`), so this branch's organisation migrations were moved from 0009-0016 to 0010-0017 behind it. Verified with real Alembic runs: a fresh database to head, and a simulated production database (at 0009, with 3 people and 1 org-owned account) to 0017: all accounts kept, Pro plan intact, one personal organisation and membership per account.
