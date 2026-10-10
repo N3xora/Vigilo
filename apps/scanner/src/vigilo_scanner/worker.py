@@ -11,6 +11,7 @@ from arq.cron import cron
 
 from vigilo_core.config import config
 from vigilo_core.errors import ErrorCode, StructuredError
+from vigilo_core.observability import init_error_tracking
 from vigilo_orchestrator.jobs import (
     generate_remediations_job,
     render_report_pdf_job,
@@ -29,6 +30,9 @@ def _redis_settings() -> RedisSettings:
     if not cfg.redis_url:
         raise StructuredError(ErrorCode.CONFIGURATION_ERROR, "REDIS_URL is not set")
     return RedisSettings.from_dsn(cfg.redis_url)
+
+
+init_error_tracking("scanner")  # off unless SENTRY_DSN is set
 
 
 class WorkerSettings:

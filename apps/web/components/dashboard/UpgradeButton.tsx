@@ -8,10 +8,12 @@ const JWT_TEMPLATE = process.env.NEXT_PUBLIC_CLERK_JWT_TEMPLATE ?? "vigilo-api";
 
 export function UpgradeButton({
   planId,
+  orgId,
   interval = "month",
   label = "Upgrade",
 }: {
   planId: string;
+  orgId: string;
   interval?: "month" | "year";
   label?: string;
 }) {
@@ -25,7 +27,7 @@ export function UpgradeButton({
     try {
       const token = await getToken({ template: JWT_TEMPLATE });
       if (!token) throw new ApiError(401, null);
-      const { checkout_url } = await api.createCheckout(planId, interval, token);
+      const { checkout_url } = await api.createCheckout(planId, interval, token, orgId);
       window.location.href = checkout_url;
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't start checkout.");

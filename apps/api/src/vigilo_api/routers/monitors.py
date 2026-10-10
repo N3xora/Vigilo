@@ -13,12 +13,17 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
 
+from vigilo_api.access import (
+    count_monitors_for_org,
+    org_id_for_target,
+    plan_id_for_target,
+    require_target_role,
+)
+from vigilo_api.audit_log import record
 from vigilo_api.deps import AccountDep, SessionDep
 from vigilo_api.schemas import AlertResponse, MonitorCreate, MonitorResponse, ScoreHistoryEntry
 from vigilo_billing import Meter, QuotaExceeded, consume, entitlements
-from vigilo_identity.models import Account
 from vigilo_monitoring import (
-    count_monitors_for_account,
     create_monitor,
     get_monitor,
     get_monitor_by_target,
@@ -26,7 +31,7 @@ from vigilo_monitoring import (
 )
 from vigilo_monitoring import disable_monitor as disable_monitor_row
 from vigilo_orchestrator.service import list_scans_for_target
-from vigilo_project.repository import get_or_create_default_project, get_target
+from vigilo_project.repository import get_project
 
 router = APIRouter(tags=["monitors"])
 
@@ -41,14 +46,6 @@ def _to_response(monitor) -> MonitorResponse:
         quiet_start_utc=monitor.quiet_start_utc,
         quiet_end_utc=monitor.quiet_end_utc,
     )
-
-
-async def _owned_target_or_404(session: SessionDep, account: Account, target_id: uuid.UUID):
-    target = await get_target(session, target_id)
-    project = await get_or_create_default_project(session, account.id)
-    if target is None or target.project_id != project.id:
-        raise HTTPException(status_code=404, detail="target not found")
-    return target
 
 
 def _validate_cadence(cadence_hours: int, monitoring_frequency: str | None) -> None:
@@ -69,8 +66,8 @@ async def create_target_monitor(
     account: AccountDep,
     session: SessionDep,
 ) -> MonitorResponse:
-    target = await _owned_target_or_404(session, account, target_id)
-    plan = entitlements(account.plan_id)
+    target = await require_target_role(session, account, target_id, "member")
+    plan = entitlements(await plan_id_for_target(session, target.id))
     _validate_cadence(body.cadence_hours, plan.monitoring_frequency)
 
     # A genuinely new monitor consumes the MONITORS quota; re-enabling or
@@ -78,7 +75,9 @@ async def create_target_monitor(
     # target) does not — matches POST /v1/targets' own
     # only-count-if-new precedent.
     if await get_monitor_by_target(session, target.id) is None:
-        current_count = await count_monitors_for_account(session, account.id)
+        current_count = await count_monitors_for_org(
+            session, (await get_project(session, target.project_id)).org_id
+        )
         decision = consume(current_count, 1, Meter.MONITORS, plan)
         if not decision.allowed:
             raise QuotaExceeded(
@@ -94,6 +93,14 @@ async def create_target_monitor(
         quiet_start_utc=body.quiet_start_utc,
         quiet_end_utc=body.quiet_end_utc,
     )
+    await record(
+        session,
+        account,
+        (await get_project(session, target.project_id)).org_id,
+        "monitor_enabled",
+        target.origin,
+        cadence_hours=body.cadence_hours,
+    )
     return _to_response(monitor)
 
 
@@ -101,7 +108,7 @@ async def create_target_monitor(
 async def get_target_monitor(
     target_id: uuid.UUID, account: AccountDep, session: SessionDep
 ) -> MonitorResponse:
-    target = await _owned_target_or_404(session, account, target_id)
+    target = await require_target_role(session, account, target_id, "viewer")
     monitor = await get_monitor_by_target(session, target.id)
     if monitor is None:
         raise HTTPException(status_code=404, detail="no monitor for this target")
@@ -116,12 +123,20 @@ async def disable_target_monitor(
     # (not 403) so ownership can't be probed by status code, matching
     # targets.py's precedent.
     existing = await get_monitor(session, monitor_id)
-    if existing is None or existing.account_id != account.id:
+    if existing is None:
         raise HTTPException(status_code=404, detail="monitor not found")
+    target = await require_target_role(session, account, existing.target_id, "member")
 
     monitor = await disable_monitor_row(session, monitor_id)
     if monitor is None:
         raise HTTPException(status_code=404, detail="monitor not found")
+    await record(
+        session,
+        account,
+        await org_id_for_target(session, target.id),
+        "monitor_disabled",
+        target.origin,
+    )
     return _to_response(monitor)
 
 
@@ -129,7 +144,7 @@ async def disable_target_monitor(
 async def get_target_score_history(
     target_id: uuid.UUID, account: AccountDep, session: SessionDep
 ) -> list[ScoreHistoryEntry]:
-    target = await _owned_target_or_404(session, account, target_id)
+    target = await require_target_role(session, account, target_id, "viewer")
     scans = await list_scans_for_target(session, target.id)
     return [
         ScoreHistoryEntry(
@@ -147,7 +162,7 @@ async def get_target_score_history(
 async def get_target_alerts(
     target_id: uuid.UUID, account: AccountDep, session: SessionDep
 ) -> list[AlertResponse]:
-    target = await _owned_target_or_404(session, account, target_id)
+    target = await require_target_role(session, account, target_id, "viewer")
     alerts = await list_alerts_for_target(session, target.id)
     return [
         AlertResponse(

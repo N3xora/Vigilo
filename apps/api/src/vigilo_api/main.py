@@ -7,11 +7,12 @@ from vigilo_api.errors import handle_structured_error
 from vigilo_api.routers import (
     accounts,
     api_keys,
+    audit,
     badge,
     billing,
     branding,
-    internal,
     monitors,
+    orgs,
     public_api,
     reports,
     scans,
@@ -21,12 +22,15 @@ from vigilo_api.routers import (
 )
 from vigilo_core.config import config
 from vigilo_core.errors import StructuredError
+from vigilo_core.observability import init_error_tracking
 
 app = FastAPI(
     title="Vigilo API",
     description="Control-plane HTTP surface.",
     version="0.1.0",
 )
+
+init_error_tracking("api")  # off unless SENTRY_DSN is set
 
 app.add_exception_handler(StructuredError, handle_structured_error)
 
@@ -46,10 +50,11 @@ if _web_app_url:
 app.include_router(scans.router)
 app.include_router(targets.router)
 app.include_router(accounts.router)
+app.include_router(orgs.router)
+app.include_router(audit.router)
 app.include_router(reports.router)
 app.include_router(share_links.router)
 app.include_router(billing.router)
-app.include_router(internal.router)
 app.include_router(billing.plans_router)
 app.include_router(monitors.router)
 app.include_router(badge.router)

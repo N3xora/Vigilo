@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./tokens.css";
 
 :root {
   --background: #ffffff;
@@ -7,12 +8,19 @@
      values; kept in sync by hand since Tailwind's CSS-first config can't
      import JSON directly. */
   --color-primary: #0f172a;
-  --color-accent: #22d3ee;
-  --color-critical: #dc2626;
-  --color-high: #ea580c;
-  --color-medium: #ca8a04;
-  --color-low: #0891b2;
-  --color-pass: #16a34a;
+  /* Text-safe on white: every pair below is at least 4.5:1 (WCAG AA). They also
+     work as badge fills under white text. The dark-mode block swaps the text
+     colours for lighter ones; fills (--fill-*) stay the same in both. */
+  --color-accent: #0e7490;
+  --color-critical: #b91c1c;
+  --color-high: #c2410c;
+  --color-medium: #a16207;
+  --color-low: #0e7490;
+  --color-pass: #15803d;
+  --fill-critical: #b91c1c;
+  --fill-high: #c2410c;
+  --fill-medium: #a16207;
+  --fill-low: #0e7490;
 }
 
 @theme inline {
@@ -27,12 +35,22 @@
   --color-severity-medium: var(--color-medium);
   --color-severity-low: var(--color-low);
   --color-severity-pass: var(--color-pass);
+  --color-fill-critical: var(--fill-critical);
+  --color-fill-high: var(--fill-high);
+  --color-fill-medium: var(--fill-medium);
+  --color-fill-low: var(--fill-low);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --color-accent: #22d3ee;
+    --color-critical: #f87171;
+    --color-high: #fb923c;
+    --color-medium: #facc15;
+    --color-low: #22d3ee;
+    --color-pass: #4ade80;
   }
 }
 

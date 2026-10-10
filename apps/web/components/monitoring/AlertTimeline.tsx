@@ -23,7 +23,7 @@ export function AlertTimeline({ alerts }: { alerts: AlertResponse[] }) {
     <div className="rounded-lg border border-black/10 dark:border-white/10 p-4">
       <p className="text-sm font-semibold mb-2">Recent alerts</p>
       {alerts.length === 0 ? (
-        <p className="text-sm text-black/50 dark:text-white/50">
+        <p className="text-sm text-black/60 dark:text-white/65">
           No alerts yet — monitoring hasn&apos;t detected any changes.
         </p>
       ) : (
@@ -34,7 +34,7 @@ export function AlertTimeline({ alerts }: { alerts: AlertResponse[] }) {
                 {LABEL_BY_TYPE[alert.type] ?? alert.type}
                 {alert.fingerprint ? ` (${alert.fingerprint})` : ""}
               </span>
-              <span className="text-xs text-black/50 dark:text-white/50 whitespace-nowrap">
+              <span className="text-xs text-black/60 dark:text-white/65 whitespace-nowrap">
                 {new Date(alert.created_at).toLocaleString()}
               </span>
             </li>

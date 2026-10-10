@@ -14,6 +14,7 @@ from pydantic import BaseModel
 class Project(BaseModel):
     id: uuid.UUID
     account_id: uuid.UUID
+    org_id: uuid.UUID
     name: str
     created_at: datetime
 

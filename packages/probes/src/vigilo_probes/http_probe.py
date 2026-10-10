@@ -29,7 +29,7 @@ _MAX_REDIRECTS = 5
 _BODY_EXCERPT_CAP = 8 * 1024
 _MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024
 _REQUEST_TIMEOUT = 15.0
-_USER_AGENT = "VigiloScanner/0.1 (+https://vigilo.onenexora.com/scanner)"
+_USER_AGENT = "VigiloScanner/0.1 (+https://vigilo.onenexora.com/aup)"
 
 
 class TooManyRedirects(RuntimeError):

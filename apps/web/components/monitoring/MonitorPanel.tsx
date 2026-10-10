@@ -99,7 +99,7 @@ export function MonitorPanel({
         {monitor?.enabled ? (
           <span className="text-xs text-severity-pass">Active</span>
         ) : (
-          <span className="text-xs text-black/50 dark:text-white/50">Off</span>
+          <span className="text-xs text-black/60 dark:text-white/65">Off</span>
         )}
       </div>
 

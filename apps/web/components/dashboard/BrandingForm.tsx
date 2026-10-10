@@ -7,7 +7,15 @@ import type { BrandingProfileResponse } from "../../lib/types";
 
 const JWT_TEMPLATE = process.env.NEXT_PUBLIC_CLERK_JWT_TEMPLATE ?? "vigilo-api";
 
-export function BrandingForm({ initialProfile }: { initialProfile: BrandingProfileResponse }) {
+export function BrandingForm({
+  initialProfile,
+  orgId,
+  canEdit = true,
+}: {
+  initialProfile: BrandingProfileResponse;
+  orgId: string;
+  canEdit?: boolean;
+}) {
   const { getToken } = useAuth();
   const [logoUrl, setLogoUrl] = useState(initialProfile.logo_url ?? "");
   const [primaryColor, setPrimaryColor] = useState(initialProfile.primary_color ?? "");
@@ -40,7 +48,7 @@ export function BrandingForm({ initialProfile }: { initialProfile: BrandingProfi
       if (footerText !== (initialProfile.footer_text ?? "")) body.footer_text = footerText;
       if (customDomain !== (initialProfile.custom_domain ?? "")) body.custom_domain = customDomain;
 
-      await api.updateBrandingProfile(body, token);
+      await api.updateBrandingProfile(body, token, orgId);
       setSaved(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't save branding.");
@@ -95,7 +103,7 @@ export function BrandingForm({ initialProfile }: { initialProfile: BrandingProfi
       <button
         type="button"
         onClick={handleSave}
-        disabled={busy}
+        disabled={busy || !canEdit}
         className="rounded-md bg-brand-primary px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
       >
         {busy ? "Saving…" : "Save"}

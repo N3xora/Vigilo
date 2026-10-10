@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { api } from "../../lib/api";
+import { getActiveOrg } from "../../lib/nexora/data";
 
 const JWT_TEMPLATE = process.env.NEXT_PUBLIC_CLERK_JWT_TEMPLATE ?? "vigilo-api";
 
@@ -12,7 +13,8 @@ export default async function DashboardOverviewPage() {
     redirect("/sign-in");
   }
 
-  const [account, targets] = await Promise.all([api.getMe(token), api.listTargets(token)]);
+  const org = await getActiveOrg();
+  const [account, targets] = await Promise.all([api.getMe(token), api.listTargets(token, org.id)]);
 
   return (
     <div className="space-y-6">
@@ -22,7 +24,7 @@ export default async function DashboardOverviewPage() {
       </div>
 
       <div className="rounded-lg border border-black/10 dark:border-white/20 p-4 text-sm space-y-1">
-        <p className="font-semibold capitalize">{account.entitlements.plan_id} plan</p>
+        <p className="font-semibold capitalize">{org.entitlements.plan_id} plan</p>
         <p className="text-black/60 dark:text-white/60">
           {targets.length} target{targets.length === 1 ? "" : "s"} tracked
         </p>

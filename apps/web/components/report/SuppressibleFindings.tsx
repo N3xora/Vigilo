@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { ReportFindingResponse } from "../../lib/types";
+import { FixFirst } from "./FixFirst";
 import { SeverityGroup } from "./SeverityGroup";
 import { AcceptedRisksSection } from "./AcceptedRisksSection";
 
@@ -35,6 +36,7 @@ export function SuppressibleFindings({
 
   return (
     <>
+      <FixFirst findings={findings} />
       <SeverityGroup
         findings={findings}
         printMode={printMode}

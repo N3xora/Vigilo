@@ -56,9 +56,7 @@ async def test_create_monitor_on_the_free_plan_is_denied(client, free_account):
     create_target = await client.post("/v1/targets", json={"origin": "https://example.com"})
     target_id = create_target.json()["target_id"]
 
-    response = await client.post(
-        f"/v1/targets/{target_id}/monitors", json={"cadence_hours": 168}
-    )
+    response = await client.post(f"/v1/targets/{target_id}/monitors", json={"cadence_hours": 168})
 
     assert response.status_code == 429
     assert response.json()["code"] == "QUOTA_EXCEEDED"
@@ -68,9 +66,7 @@ async def test_create_monitor_on_pro_with_a_weekly_cadence(client, pro_account):
     create_target = await client.post("/v1/targets", json={"origin": "https://example.com"})
     target_id = create_target.json()["target_id"]
 
-    response = await client.post(
-        f"/v1/targets/{target_id}/monitors", json={"cadence_hours": 168}
-    )
+    response = await client.post(f"/v1/targets/{target_id}/monitors", json={"cadence_hours": 168})
 
     assert response.status_code == 201
     body = response.json()
@@ -79,9 +75,7 @@ async def test_create_monitor_on_pro_with_a_weekly_cadence(client, pro_account):
     assert body["enabled"] is True
 
 
-async def test_create_monitor_on_pro_with_a_cadence_over_a_week_is_rejected(
-    client, pro_account
-):
+async def test_create_monitor_on_pro_with_a_cadence_over_a_week_is_rejected(client, pro_account):
     create_target = await client.post("/v1/targets", json={"origin": "https://example.com"})
     target_id = create_target.json()["target_id"]
 

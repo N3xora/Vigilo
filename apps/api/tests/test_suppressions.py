@@ -74,9 +74,7 @@ async def test_suppress_finding_requires_ownership_of_the_target(client, account
     assert response.status_code == 404
 
 
-async def test_list_suppressions_returns_only_this_targets_suppressions(
-    client, account, target_id
-):
+async def test_list_suppressions_returns_only_this_targets_suppressions(client, account, target_id):
     await client.post(
         f"/v1/targets/{target_id}/findings/suppress",
         json={"fingerprint": "fp1", "check_id": "HDR-001", "reason": "r1"},
@@ -100,9 +98,7 @@ async def test_revoke_suppression_succeeds_for_the_owner(client, account, target
     )
     suppression_id = create_response.json()["suppression_id"]
 
-    response = await client.post(
-        f"/v1/targets/{target_id}/suppressions/{suppression_id}/revoke"
-    )
+    response = await client.post(f"/v1/targets/{target_id}/suppressions/{suppression_id}/revoke")
     assert response.status_code == 200
     assert response.json()["suppression_id"] == suppression_id
 
@@ -125,16 +121,12 @@ async def test_revoke_suppression_requires_ownership(client, account, target_id)
         )
     app.dependency_overrides[require_account] = lambda: other
 
-    response = await client.post(
-        f"/v1/targets/{target_id}/suppressions/{suppression_id}/revoke"
-    )
+    response = await client.post(f"/v1/targets/{target_id}/suppressions/{suppression_id}/revoke")
     assert response.status_code == 404
 
 
 async def test_revoke_an_unknown_suppression_returns_404(client, account, target_id):
-    response = await client.post(
-        f"/v1/targets/{target_id}/suppressions/{uuid.uuid4()}/revoke"
-    )
+    response = await client.post(f"/v1/targets/{target_id}/suppressions/{uuid.uuid4()}/revoke")
     assert response.status_code == 404
 
 
@@ -144,3 +136,72 @@ async def test_suppression_endpoints_require_authentication(client):
         json={"fingerprint": "x", "check_id": "HDR-001", "reason": "x"},
     )
     assert response.status_code == 401
+
+
+# --- team-shared risk acceptance (fix-plan item 3) ---------------------------
+
+
+async def _org_member(client, owner, role: str, email: str, clerk: str):
+    """Invite a second account into the owner's personal org with `role`."""
+    from vigilo_identity.org_repository import ensure_personal_org
+
+    async with session_scope() as session:
+        org = await ensure_personal_org(session, owner)
+        member = await get_or_create_account(session, email=email, clerk_user_id=clerk)
+    app.dependency_overrides[require_account] = lambda: owner
+    token = (
+        await client.post(f"/v1/orgs/{org.id}/invites", json={"email": email, "role": role})
+    ).json()["token"]
+    app.dependency_overrides[require_account] = lambda: member
+    assert (await client.post(f"/v1/invites/{token}/accept")).status_code == 200
+    return member
+
+
+async def test_org_member_can_accept_a_risk_on_a_teammates_target(client, account, target_id):
+    member = await _org_member(client, account, "member", "teammate@example.com", "user_mate")
+    app.dependency_overrides[require_account] = lambda: member
+    response = await client.post(
+        f"/v1/targets/{target_id}/findings/suppress",
+        json={"fingerprint": "team1", "check_id": "HDR-001", "reason": "CDN adds this header"},
+    )
+    assert response.status_code == 201
+    assert response.json()["created_by_account_id"] == str(member.id)
+
+    app.dependency_overrides[require_account] = lambda: account
+    listing = await client.get(f"/v1/targets/{target_id}/suppressions")
+    assert [s["reason"] for s in listing.json()] == ["CDN adds this header"]
+
+
+async def test_org_viewer_can_read_but_not_accept_risks(client, account, target_id):
+    viewer = await _org_member(client, account, "viewer", "viewer@example.com", "user_view")
+    app.dependency_overrides[require_account] = lambda: viewer
+    assert (await client.get(f"/v1/targets/{target_id}/suppressions")).status_code == 200
+    denied = await client.post(
+        f"/v1/targets/{target_id}/findings/suppress",
+        json={"fingerprint": "v1", "check_id": "HDR-001", "reason": "nope"},
+    )
+    assert denied.status_code == 403
+
+
+async def test_outsider_cannot_see_or_accept_risks(client, account, target_id):
+    async with session_scope() as session:
+        stranger = await get_or_create_account(
+            session, email="stranger@example.com", clerk_user_id="user_stranger"
+        )
+    app.dependency_overrides[require_account] = lambda: stranger
+    assert (await client.get(f"/v1/targets/{target_id}/suppressions")).status_code == 404
+    assert (
+        await client.post(
+            f"/v1/targets/{target_id}/findings/suppress",
+            json={"fingerprint": "x", "check_id": "HDR-001", "reason": "r"},
+        )
+    ).status_code == 404
+
+
+async def test_a_reason_is_required(client, account, target_id):
+    for reason in ["", "   "]:
+        response = await client.post(
+            f"/v1/targets/{target_id}/findings/suppress",
+            json={"fingerprint": "r1", "check_id": "HDR-001", "reason": reason},
+        )
+        assert response.status_code == 422

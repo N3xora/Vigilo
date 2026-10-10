@@ -23,3 +23,8 @@ class LlmProviderError(StructuredError):
 class BillingProviderError(StructuredError):
     def __init__(self, message: str, **context: Any) -> None:
         super().__init__(ErrorCode.BILLING_PROVIDER_ERROR, message, **context)
+
+
+class IdentityProviderError(StructuredError):
+    def __init__(self, message: str, **context: Any) -> None:
+        super().__init__(ErrorCode.CONFIGURATION_ERROR, message, **context)

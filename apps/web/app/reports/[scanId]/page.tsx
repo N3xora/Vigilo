@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { Show, UserButton } from "@clerk/nextjs";
+import { AutoRefresh } from "../../../components/report/AutoRefresh";
 import { ReportView } from "../../../components/report/ReportView";
 import { api, ApiError } from "../../../lib/api";
 import { brand } from "../../../lib/brand";
@@ -32,9 +33,12 @@ export default async function ReportPage({
     if (err instanceof ApiError && err.status === 409) {
       return (
         <main className="mx-auto max-w-md px-6 py-16 text-center">
-          <p className="text-lg font-medium">Still scanning…</p>
+          <AutoRefresh />
+          <p role="status" className="text-lg font-medium">
+            Still scanning…
+          </p>
           <p className="mt-2 text-sm text-black/60 dark:text-white/60">
-            This report isn&apos;t ready yet. Refresh in a few seconds.
+            This report isn&apos;t ready yet. This page updates by itself.
           </p>
         </main>
       );
@@ -49,7 +53,7 @@ export default async function ReportPage({
     <>
       {!printMode ? (
         <header className="flex items-center justify-between px-6 py-4 border-b border-black/10 dark:border-white/10">
-          <Link href="/" className="font-semibold">
+          <Link href="/products/vigilo" className="font-semibold">
             {brand.name}
           </Link>
           <nav className="flex items-center gap-4 text-sm">

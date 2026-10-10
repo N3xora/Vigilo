@@ -22,6 +22,7 @@ dependencies = [
     "vigilo-billing",
     "vigilo-integrations",
     "vigilo-monitoring",
+    "sentry-sdk>=2",
 ]
 
 [dependency-groups]

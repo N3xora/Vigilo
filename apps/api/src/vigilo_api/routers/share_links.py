@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
 
+from vigilo_api.access import org_id_for_target, plan_id_for_target, require_target_role
+from vigilo_api.audit_log import record
 from vigilo_api.deps import AccountDep, SessionDep
 from vigilo_api.report_rendering import get_branding_for_target, render_scan_report
 from vigilo_api.schemas import (
@@ -36,7 +38,7 @@ from vigilo_orchestrator.reports import (
     revoke_share_link,
 )
 from vigilo_orchestrator.service import get_scan, get_scan_by_job_id, get_scan_job
-from vigilo_project.repository import get_or_create_default_project, get_target
+from vigilo_project.repository import get_target
 
 router = APIRouter(tags=["share-links"])
 
@@ -45,10 +47,7 @@ async def _owned_scan_or_404(session: SessionDep, account: Account, scan_job_id:
     job = await get_scan_job(session, scan_job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="scan not found")
-    target = await get_target(session, job.target_id)
-    project = await get_or_create_default_project(session, account.id)
-    if target is None or target.project_id != project.id:
-        raise HTTPException(status_code=404, detail="scan not found")
+    await require_target_role(session, account, job.target_id, "admin")
     return job
 
 
@@ -62,11 +61,8 @@ async def _owned_share_link_or_404(session: SessionDep, account: Account, share_
     scan = await get_scan(session, report.scan_id)
     if scan is None:
         raise HTTPException(status_code=404, detail="share link not found")
-    target = await get_target(session, scan.target_id)
-    project = await get_or_create_default_project(session, account.id)
-    if target is None or target.project_id != project.id:
-        raise HTTPException(status_code=404, detail="share link not found")
-    return link
+    await require_target_role(session, account, scan.target_id, "admin")
+    return await org_id_for_target(session, scan.target_id)
 
 
 @router.post(
@@ -78,8 +74,8 @@ async def create_scan_share_link(
     account: AccountDep,
     session: SessionDep,
 ) -> ShareLinkCreateResponse:
-    await _owned_scan_or_404(session, account, scan_job_id)
-    if not entitlements(account.plan_id).share_links_allowed:
+    job = await _owned_scan_or_404(session, account, scan_job_id)
+    if not entitlements(await plan_id_for_target(session, job.target_id)).share_links_allowed:
         raise QuotaExceeded("share links are not included in the account's plan")
 
     scan = await get_scan_by_job_id(session, scan_job_id)
@@ -88,6 +84,14 @@ async def create_scan_share_link(
 
     report = await get_or_create_html_report(session, scan.id)
     link, token = await create_share_link(session, report.id, body.expires_in_days)
+    await record(
+        session,
+        account,
+        await org_id_for_target(session, job.target_id),
+        "share_link_created",
+        str(scan_job_id),
+        expires_in_days=body.expires_in_days,
+    )
 
     return ShareLinkCreateResponse(
         share_link_id=link.id,
@@ -124,8 +128,9 @@ async def list_scan_share_links(
 async def revoke_scan_share_link(
     share_link_id: uuid.UUID, account: AccountDep, session: SessionDep
 ) -> ShareLinkRevokeResponse:
-    await _owned_share_link_or_404(session, account, share_link_id)
+    org_id = await _owned_share_link_or_404(session, account, share_link_id)
     revoked = await revoke_share_link(session, share_link_id)
+    await record(session, account, org_id, "share_link_revoked", str(share_link_id))
     return ShareLinkRevokeResponse(share_link_id=revoked.id, revoked_at=revoked.revoked_at)
 
 

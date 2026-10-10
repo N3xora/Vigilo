@@ -339,56 +339,85 @@ resolution.
 
 ## `GET /v1/plans` — plan comparison data
 
-No auth — genuinely public, no `AccountDep`/`SessionDep`, reads the static
-in-memory `PLANS` dict directly. Added for the self-serve dashboard's
-billing/upgrade page (`apps/web`'s `/dashboard/billing`).
+No auth. Reads the static in-memory `PLANS` dict.
 
 **Response `200`**: `[PlanResponse, ...]`, one entry per `vigilo_billing.PlanId`
-(`free`/`builder`/`studio`/`business`), field-for-field identical to
-`EntitlementsResponse` above. **Deliberately no price field** — no dollar
-amount exists anywhere in this codebase (not in `brand.config.json`, not
-in `vigilo_billing.models.Plan`, not in any schema); the actual price
-lives only inside Paddle's own hosted checkout page, reached via
-`POST /v1/billing/checkout` below. The dashboard renders this as a
-feature/limit comparison table and links out to checkout for the price.
+(`free`, `pro`): the entitlement fields plus `price_cents`,
+`price_cents_yearly` and `currency`, which are display prices. What a
+customer is charged is the Stripe Price behind the plan.
 
-## `POST /v1/billing/checkout` — start a Paddle checkout (Phase 7)
+## Organisations, `X-Org-Id` and roles
 
-Auth required.
+A person belongs to one or more organisations (everyone has a personal one).
+List and create routes (`/v1/targets`, `/v1/me/api-keys`,
+`/v1/me/branding-profile`, `/v1/billing/*`) act in the **active
+organisation**: the `X-Org-Id` header if sent (`404` if the caller is not a
+member, `422` if not a UUID), else the caller's personal organisation. Routes
+about one target, scan, monitor or share link use the caller's role in the
+organisation that owns it, with no header. Roles, lowest first: `viewer`
+(read), `member` (add and verify targets, run monitors, accept risks),
+`admin` (API keys, branding, billing, share links, members), `owner` (one per
+organisation). A non-member always gets `404`, never `403`.
 
-**Request**: `{ "plan_id": "builder" }` → **Response `200`**:
-`{ "checkout_url": "https://checkout.paddle.com/checkout?..." }` — a
-templated hosted-checkout URL (`vigilo_integrations.billing.create_checkout_url()`),
-not a server-to-server API call. Completing checkout happens entirely on
-Paddle's hosted page; this account's plan only actually changes once the
-resulting `subscription.created` webhook arrives below.
+| route | role | purpose |
+| --- | --- | --- |
+| `GET`/`POST /v1/orgs` | any | list my organisations (with each one's entitlements) / create one |
+| `GET /v1/orgs/{id}/members` | viewer | members |
+| `PATCH`/`DELETE /v1/orgs/{id}/members/{account_id}` | admin (anyone may delete themselves) | change a role / remove or leave; the owner cannot be changed or removed |
+| `GET`/`POST /v1/orgs/{id}/invites` | admin | pending invitations / invite by email (emailed; response has the one-time `token` and `email_status`) |
+| `POST /v1/orgs/{id}/invites/{invite_id}/resend` | admin | new link, new 7 days, emailed again |
+| `DELETE /v1/orgs/{id}/invites/{invite_id}` | admin | withdraw |
+| `POST /v1/invites/{token}/accept` | signed-in, matching email | join |
+| `GET /v1/orgs/{id}/products`, `POST .../products/{slug}/enable` | viewer / admin | product enablement |
+| `GET /v1/orgs/{id}/usage` | viewer | this month's counters |
+| `GET /v1/orgs/{id}/audit` | admin | audit log: newest first, `cursor`, `action`, `limit` (1-100) |
+| `GET /v1/me/deletion-check`, `POST /v1/me/delete` | account | what blocks deleting my account / delete it (`{ "confirm_email": ... }`) |
 
-**Errors**: `500` `BILLING_PROVIDER_ERROR` if Paddle isn't configured
-(`PADDLE_VENDOR_ID`/`PADDLE_PRICE_ID_*` unset) or `plan_id` has no
-configured price (e.g. `"free"`).
+## `GET /v1/billing/summary` — what the organisation pays for
 
-## `POST /v1/billing/webhook` — Paddle subscription events (Phase 7)
+Owner or admin. One line per product (`vigilo`, `sentinel`, `cspm`, `gateway`,
+`neurawall`): plan, `active` or `free`, `interval`, display `amount_cents`,
+`current_period_end`, `cancel_at_period_end`, `can_purchase`; plus `totals`
+(`monthly_cents` and `yearly_cents`, never converted into each other). Only
+`vigilo` can be bought today.
 
-**No auth** — deliberately public. Paddle authenticates itself via the
-`Paddle-Signature` header (HMAC-SHA256 over the raw request body), verified
-before the body is parsed as JSON at all. See `docs/security.md` §7 for the
-full attack-surface writeup, including the disclosed replay-protection gap.
+## `POST /v1/billing/checkout` — start a Stripe checkout
 
-**Behavior.** `verify_webhook_signature()` (`401` on failure) →
-`parse_webhook_event()` → `interpret_webhook_event()`, which recognizes
-`subscription.created`/`updated`/`canceled` and raises
-`UnrecognizedWebhookEvent` for anything else or a malformed payload of a
-recognized type — either case returns `200`/no-op rather than an error, to
-avoid triggering Paddle's retry logic for events this integration doesn't
-act on. A recognized event looks up the account by
-`event.account_email` (`200`/no-op if unknown) and applies it via
-`vigilo_identity.upsert_subscription()`, which cascades `accounts.plan_id`
-(to the new plan if `status == "active"`, to `"free"` on `canceled`) and
-writes an `audit_events` row (`action="subscription_updated"`).
+Owner or admin of the active organisation.
 
-**Response `200`**: `{ "status": "applied" }` or `{ "status": "ignored" }`.
+**Request**: `{ "plan_id": "pro", "interval": "month" | "year", "product_slug": "vigilo" }`
+→ **`200`** `{ "checkout_url": "https://checkout.stripe.com/..." }`. The
+subscription belongs to the organisation: its id goes in the subscription
+metadata (`vigilo_org_id`) and the organisation's Stripe customer is reused if
+it has one. The plan only changes when the webhook below arrives.
 
-**Errors**: `401` invalid/missing signature.
+**Errors**: `409` the organisation already has a plan (use the portal);
+`422` unknown or not-yet-purchasable product; `500` `BILLING_PROVIDER_ERROR`
+if Stripe is not configured or the plan has no price.
+
+## `POST /v1/billing/portal` — Stripe customer portal
+
+Owner or admin. Opens the active organisation's own subscription in Stripe's
+hosted portal (cancel, card, invoices). `404` if it has none.
+
+## `POST /v1/billing/webhook` — Stripe subscription events
+
+**No auth.** Stripe authenticates with the `Stripe-Signature` header
+(HMAC-SHA256 over the raw body, five-minute timestamp tolerance), verified
+before the body is parsed; `401` on failure.
+
+`customer.subscription.created`, `.updated` and `.deleted` are applied; any
+other event, a malformed payload, another product's subscription on the shared
+Stripe account, or an unknown organisation returns `200 {"status": "ignored"}`
+so Stripe does not retry. The organisation comes from the checkout metadata;
+subscriptions made before organisations fall back to the payer's personal
+organisation. Applying an event upserts the subscription (keyed by Stripe's
+subscription id, so replays are harmless), records `cancel_at_period_end`,
+remembers the Stripe customer, and writes an audit event. An event older than
+the last one applied to the same subscription returns `{"status": "stale"}`
+and changes nothing.
+
+**Response `200`**: `{ "status": "applied" | "ignored" | "stale" }`.
 
 ---
 
@@ -525,14 +554,14 @@ the keys that unlock `/public/v1/*` below, not itself part of that
 surface). Gated on `entitlements(account.plan_id).api_keys_limit` via
 `Meter.API_KEYS` (Free is `0` — no API access on Free).
 
-**Request**: `{ "name": "CI pipeline", "scopes": ["scan:run", "scan:read"] }`
+**Request**: `{ "name": "CI pipeline", "scopes": ["vigilo:scan:run", "vigilo:scan:read"] }`
 
 **Response `201`**
 
 ```json
 {
   "api_key_id": "...", "name": "CI pipeline", "prefix": "vglo_aBc123De",
-  "scopes": ["scan:run", "scan:read"], "api_key": "vglo_aBc123De..."
+  "scopes": ["vigilo:scan:read", "vigilo:scan:run"], "api_key": "vglo_aBc123De..."
 }
 ```
 
@@ -608,8 +637,8 @@ route as a FastAPI dependency, before any handler (and thus before
 | `403` | the key's scopes don't include the one this route requires |
 | `429` | rate limit exceeded — response includes a `Retry-After: <seconds>` header |
 
-**Scopes**: `scan:run`, `scan:read`, `project:read`, `report:read`,
-`monitor:read`, `monitor:write`.
+**Scopes** are `product:resource:action`: `vigilo:scan:run`, `vigilo:scan:read`, `vigilo:project:read`, `vigilo:report:read`,
+`vigilo:monitor:read`, `vigilo:monitor:write`. Scopes of other products are rejected until those products are connected. Keys issued before products existed carry the bare form (`scan:run`); it still works and is treated as the Vigilo scope. The route headings below use the short form.
 
 **Ownership.** Every resource lookup below checks that the target/scan
 belongs to the key's own account and returns `404` (never `403`) on a

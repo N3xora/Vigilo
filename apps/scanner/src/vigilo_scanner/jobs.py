@@ -44,12 +44,20 @@ from vigilo_orchestrator.service import (
 )
 from vigilo_persistence import session_scope
 from vigilo_project.repository import (
+    get_project,
     get_suppressed_fingerprints_for_target,
     get_target,
     has_valid_ownership_proof,
 )
 from vigilo_security.audit import AuditEvent, audit
 from vigilo_security.authorization import AuthorizationRequest, resolve_authorization
+
+
+async def _org_of(session, target):
+    """The organisation that owns a target, for the audit trail."""
+    project = await get_project(session, target.project_id)
+    return project.org_id if project else None
+
 
 REGISTRY_VERSION = "0.1"  # small, deliberate duplication of scans.py's own
 _MODULE = "vigilo_scanner"
@@ -110,6 +118,7 @@ async def _run_due_monitor(ctx: dict[str, Any], monitor: Monitor, now: datetime)
                     action="monitor_disabled",
                     subject=target.origin,
                     account_id=account.id,
+                    org_id=await _org_of(session, target),
                     metadata={"reason": decision.reason},
                 ),
             )
@@ -117,7 +126,7 @@ async def _run_due_monitor(ctx: dict[str, Any], monitor: Monitor, now: datetime)
             return
 
         job = await create_scan_job(
-            session, target.id, decision.granted_tier, account.notification_email, REGISTRY_VERSION
+            session, target.id, decision.granted_tier, account.email, REGISTRY_VERSION
         )
         job = await advance(session, job.id, "authorized")
         job_id = job.id
@@ -133,6 +142,7 @@ async def _run_due_monitor(ctx: dict[str, Any], monitor: Monitor, now: datetime)
                 action="monitor_scan_authorized",
                 subject=target.origin,
                 account_id=account.id,
+                org_id=await _org_of(session, target),
                 metadata={"granted_tier": decision.granted_tier.value},
             ),
         )
@@ -235,7 +245,7 @@ async def detect_regression_job(ctx: dict[str, Any], scan_job_id: str) -> None:
         await reschedule_monitor(
             session, monitor.id, monitor.next_run_at, report.pending_score_drop
         )
-        account_email = account.notification_email
+        account_email = account.email
         await session.commit()
 
     if not occurrences:
@@ -289,7 +299,7 @@ async def record_scan_failed_alert_job(ctx: dict[str, Any], scan_job_id: str, re
             dedupe_key=dedupe_key,
         )
         alert_id = alert.id
-        account_email = account.notification_email
+        account_email = account.email
         target_origin = target.origin
         target_id = target.id
         await session.commit()

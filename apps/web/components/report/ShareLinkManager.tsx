@@ -57,7 +57,7 @@ export function ShareLinkManager({
   return (
     <div className="mt-8 border-t border-black/10 dark:border-white/10 pt-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-black/60 dark:text-white/65">
           Share this report
         </h2>
         <button
@@ -77,14 +77,14 @@ export function ShareLinkManager({
       {error ? <p className="mt-2 text-xs text-severity-critical">{error}</p> : null}
 
       {links.length === 0 ? (
-        <p className="mt-2 text-sm text-black/50 dark:text-white/50">No share links yet.</p>
+        <p className="mt-2 text-sm text-black/60 dark:text-white/65">No share links yet.</p>
       ) : (
         <ul className="mt-2 space-y-2">
           {links.map((link) => {
             const isRevoked = Boolean(link.revoked_at);
             return (
               <li key={link.share_link_id} className="flex items-center justify-between text-sm">
-                <span className={isRevoked ? "text-black/40 dark:text-white/40" : ""}>
+                <span className={isRevoked ? "text-black/60 dark:text-white/65" : ""}>
                   {isRevoked ? "Revoked" : "Active"} · {link.view_count} view
                   {link.view_count === 1 ? "" : "s"}
                   {link.expires_at ? ` · expires ${new Date(link.expires_at).toLocaleDateString()}` : ""}

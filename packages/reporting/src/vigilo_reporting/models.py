@@ -66,6 +66,9 @@ class ReportFinding(BaseModel):
     # (post-Phase-9's suppression workflow, docs/build-roadmap.md). Never
     # changes score/grade — presentation only, per that entry's reasoning.
     suppressed: bool = False
+    # One sentence on why this matters for the detected stack; None when the
+    # signals don't make a specific statement true.
+    why_here: str | None = None
 
 
 class ReportDocument(BaseModel):
@@ -74,3 +77,4 @@ class ReportDocument(BaseModel):
     score: Score
     generated_at: datetime
     findings: list[ReportFinding]
+    stack: list[str] = []

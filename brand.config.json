@@ -16,19 +16,19 @@
     "npmScope": "@vigilo",
     "cliBinary": "vigilo",
     "mcpServer": "vigilo-mcp",
-    "userAgent": "VigiloScanner/1.0 (+https://vigilo.onenexora.com/scanner)",
+    "userAgent": "VigiloScanner/1.0 (+https://vigilo.onenexora.com/aup)",
     "dnsVerificationKey": "vigilo-site-verification",
     "wellKnownPath": "/.well-known/vigilo-verification.txt",
     "badgePath": "/badge/{public_id}.svg"
   },
   "theme": {
     "colorPrimary": "#0F172A",
-    "colorAccent": "#22D3EE",
-    "colorCritical": "#DC2626",
-    "colorHigh": "#EA580C",
-    "colorMedium": "#CA8A04",
-    "colorLow": "#0891B2",
-    "colorPass": "#16A34A",
+    "colorAccent": "#0E7490",
+    "colorCritical": "#B91C1C",
+    "colorHigh": "#C2410C",
+    "colorMedium": "#A16207",
+    "colorLow": "#0E7490",
+    "colorPass": "#15803D",
     "fontSans": "Inter",
     "fontMono": "JetBrains Mono"
   }

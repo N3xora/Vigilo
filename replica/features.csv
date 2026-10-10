@@ -1,0 +1,34 @@
+feature,area,priority,original,clone,notes
+Vigilo URL scan + report,product,must,yes,yes,exists in repo
+Vigilo monitoring + alerts + badge,product,must,yes,yes,exists
+Vigilo API keys / CLI / MCP / GitHub Action,product,should,yes,yes,exists
+"Single sign-on (Clerk) across the console, Vigilo, the dashboard and the API",platform,must,yes,yes,"scoped to what exists: one Clerk sign-in covers every screen and the API (browser-verified, 90 specs); connecting other products' engines is future work and not scored"
+Organizations + switcher,platform,must,yes,yes,"browser-verified: create, switch, per-org targets stay apart, per-org launcher state; API tests for X-Org-Id and cross-org access"
+Members + roles (RBAC),platform,must,yes,yes,"browser-verified: list, invite with one-time link, withdraw, role change, remove with confirmation, audit entries; roles enforced on every route (API tests); not browser-tested: a second real person accepting an invite"
+Product launcher console,platform,must,yes,yes,"browser-verified: five products, status, Enable for admins (audited), per-org; engines for four products are not in this repo"
+Per-product enablement,platform,must,yes,yes,API + enable button for owner/admin
+Unified billing view,billing,must,yes,yes,"GET /v1/billing/summary + overview table on /dashboard/billing: every product, plan, price, next date, pending cancellation, totals per cadence; only Vigilo is purchasable; never run against Stripe, never rendered"
+Per-product tiered plans (5-tier ladder),billing,should,yes,skip,out of scope since 2026-10-09: only Vigilo is built and purchasable; the other ladders are shown as 'coming soon' for reference
+Monthly/annual toggle + annual discount,billing,must,yes,yes,"pricing toggle verified in a browser; Vigilo yearly checkout, price and interval recorded (tested with Stripe mocked); ~17% annual on Vigilo vs 20% on the display-only ladders; never run against real Stripe"
+Stripe portal self-service,billing,must,yes,yes,exists
+Usage metering + quotas per product,billing,must,yes,yes,"Vigilo scans: one per-org monthly counter is what the quota enforces, what both submission paths increment and what the Usage page shows (tests incl. month boundary, Pro, public API); targets, monitors, keys are live counts; other products have no engine to meter"
+Org-wide API keys with product scopes,platform,should,yes,yes,"keys belong to the org (admin+), rate limit per org; scopes are product:resource:action (vigilo:scan:run...); bare legacy scopes still work as Vigilo scopes; other products rejected until connected"
+Audit log UI,platform,should,yes,yes,"per-org trail: 20+ actions recorded, GET /v1/orgs/{id}/audit (admin), /console/audit with filter + keyset pagination; legacy events shown in the owner's personal org; never rendered"
+Marketing home + products index + product pages,marketing,must,yes,yes,"/ (platform home), /products (+category filter), /products/[slug] for 4 products, /products/vigilo; built, never rendered; product copy limited to each product's one-line promise"
+Pricing page with all products,marketing,must,yes,yes,"/pricing, monthly/annual toggle, all 5 products"
+Trust / security page,marketing,should,yes,yes,"/trust: written from what the product does today (egress guard, redaction, hashed keys, audit log, deletion); states no certifications; linked in footer"
+Developer docs portal,marketing,should,no,no,404 on original
+Sentinel log analysis,product,could,beta,skip,out of scope since 2026-10-09: this build covers the one product that exists (Vigilo); this engine is a separate project not connected here
+CSPM config audit,product,could,beta,skip,out of scope since 2026-10-09: this build covers the one product that exists (Vigilo); this engine is a separate project not connected here
+Gateway LLM governance,product,could,beta,skip,out of scope since 2026-10-09: this build covers the one product that exists (Vigilo); this engine is a separate project not connected here
+NeuraWall AI firewall,product,could,beta,skip,out of scope since 2026-10-09: this build covers the one product that exists (Vigilo); this engine is a separate project not connected here
+Marketplace / Labs / Solutions,marketing,could,unknown,skip,out of scope since 2026-10-09: pages for products that are not connected; the original's content for them is unverified
+Bundle discounts,billing,could,mentioned,skip,out of scope since 2026-10-09: only one product is purchasable and the original's bundle rules are undefined; revisit when a second product ships
+Enterprise dedicated + SLA + services,sales,could,yes,skip,not cloneable: contracts and ops
+Top-3 'fix first' summary on report,product,should,no,yes,"FixFirst on the report; shows only when more than 3 open findings; logic checked by script, not rendered"
+Stack-aware 'why it matters here' per finding,product,should,no,partial,"scan stores stack (0011); sentences for Supabase/Firebase DB checks, Next.js/Vite bundle keys, Vercel/Netlify headers only; older scans have none"
+Any org member can accept a risk with reason,platform,should,no,yes,member+ in the project's org; viewers read only; reason required; report exposes can_accept_risk
+Supabase RLS fix walkthrough prompt,product,should,no,yes,"5-step guide + agent prompt for VG-DAT-002; template path only, the LLM path does not use it"
+App-context questions that tune severity,product,could,no,no,"deliberately not built: speculative, L, no demand evidence"
+Account deletion (self-serve),platform,must,no,yes,"POST /v1/me/delete + /console/account; blocks on other members or a renewing plan; deletes owned orgs and their data, stored files, Clerk user; audit survives (0016); never rendered"
+Ownership transfer,platform,should,no,yes,"POST /v1/orgs/{id}/transfer-ownership + 'Make owner' on the members page; owner only, typed confirmation, not for personal workspaces, row-locked so two transfers cannot both win, audited; browser-verified"

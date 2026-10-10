@@ -68,23 +68,20 @@ def test_a_token_missing_the_subject_claim_is_rejected():
         verify_clerk_jwt(token, get_signing_key=_fake_get_signing_key)
 
 
-def test_flat_org_claims_from_a_jwt_template():
-    token = _make_token(email="a@example.com", org_id="org_1", org_role="org:admin")
+async def test_first_requests_for_a_new_person_arriving_together_all_succeed(client, monkeypatch):
+    """A page and its layout both call the API on a person's first load; the
+    two accounts inserts used to collide and one request got a 500."""
+    import asyncio
 
-    claims = verify_clerk_jwt(token, get_signing_key=_fake_get_signing_key)
+    from vigilo_api import deps
+    from vigilo_api.auth import ClerkClaims
 
-    assert (claims.org_id, claims.org_role) == ("org_1", "org:admin")
-
-
-def test_nested_org_claims_from_a_default_session_token():
-    token = _make_token(o={"id": "org_2", "rol": "member"})
-
-    claims = verify_clerk_jwt(token, get_signing_key=_fake_get_signing_key)
-
-    assert (claims.org_id, claims.org_role) == ("org_2", "org:member")
-
-
-def test_no_org_claims_means_a_personal_session():
-    claims = verify_clerk_jwt(_make_token(), get_signing_key=_fake_get_signing_key)
-
-    assert (claims.org_id, claims.org_role) == (None, None)
+    monkeypatch.setattr(
+        deps,
+        "verify_clerk_jwt",
+        lambda token: ClerkClaims(user_id="user_race_first_load", email="race-first@example.com"),
+    )
+    headers = {"Authorization": "Bearer anything"}
+    responses = await asyncio.gather(*(client.get("/v1/orgs", headers=headers) for _ in range(8)))
+    assert [r.status_code for r in responses] == [200] * 8
+    assert len({r.json()[0]["org_id"] for r in responses}) == 1  # one account, one personal org

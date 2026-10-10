@@ -29,6 +29,7 @@ class AuditEvent:
     action: str
     subject: str
     account_id: uuid.UUID | None = None
+    org_id: uuid.UUID | None = None
     metadata: dict = field(default_factory=dict)
     occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -36,6 +37,7 @@ class AuditEvent:
 async def audit(session: AsyncSession, event: AuditEvent) -> None:
     row = AuditEventRow(
         account_id=event.account_id,
+        org_id=event.org_id,
         actor=event.actor,
         action=event.action,
         subject=event.subject,

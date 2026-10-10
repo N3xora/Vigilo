@@ -7,7 +7,7 @@ import { api, ApiError } from "../../lib/api";
 const JWT_TEMPLATE = process.env.NEXT_PUBLIC_CLERK_JWT_TEMPLATE ?? "vigilo-api";
 
 /** Opens Stripe's hosted Customer Portal: cancel, update card, invoices. */
-export function ManageSubscriptionButton() {
+export function ManageSubscriptionButton({ orgId }: { orgId: string }) {
   const { getToken } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +18,7 @@ export function ManageSubscriptionButton() {
     try {
       const token = await getToken({ template: JWT_TEMPLATE });
       if (!token) throw new ApiError(401, null);
-      const { portal_url } = await api.createPortal(token);
+      const { portal_url } = await api.createPortal(token, orgId);
       window.location.href = portal_url;
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't open subscription management.");

@@ -6,7 +6,7 @@ function SkippedList({ findings }: { findings: ReportFindingResponse[] }) {
       {findings.map((finding) => (
         <li key={finding.fingerprint} className="flex items-baseline gap-2 text-sm">
           <span className="font-medium">{finding.title}</span>
-          <span className="text-black/50 dark:text-white/50">— {finding.summary}</span>
+          <span className="text-black/60 dark:text-white/65">— {finding.summary}</span>
         </li>
       ))}
     </ul>
@@ -31,10 +31,10 @@ export function SkippedSection({
     <div className="mt-8 space-y-6 border-t border-black/10 dark:border-white/10 pt-6">
       {inconclusive.length > 0 ? (
         <details open={printMode} className="text-sm">
-          <summary className="cursor-pointer select-none font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
+          <summary className="cursor-pointer select-none font-semibold uppercase tracking-wide text-black/60 dark:text-white/65">
             Couldn&apos;t check ({inconclusive.length})
           </summary>
-          <p className="mt-1 text-xs text-black/50 dark:text-white/50 max-w-prose">
+          <p className="mt-1 text-xs text-black/60 dark:text-white/65 max-w-prose">
             These checks didn&apos;t produce a clear pass or fail — usually because the target didn&apos;t
             respond the way the check expected. They don&apos;t count against the score.
           </p>
@@ -44,10 +44,10 @@ export function SkippedSection({
 
       {notApplicable.length > 0 ? (
         <details open={printMode} className="text-sm">
-          <summary className="cursor-pointer select-none font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
+          <summary className="cursor-pointer select-none font-semibold uppercase tracking-wide text-black/60 dark:text-white/65">
             Not applicable ({notApplicable.length})
           </summary>
-          <p className="mt-1 text-xs text-black/50 dark:text-white/50 max-w-prose">
+          <p className="mt-1 text-xs text-black/60 dark:text-white/65 max-w-prose">
             These checks don&apos;t apply to this site — for example, a check for a technology the site
             doesn&apos;t use. They don&apos;t count against the score.
           </p>

@@ -17,11 +17,16 @@ from vigilo_api.schemas import ScanStatusResponse, ScanSubmission, ScanSubmissio
 from vigilo_billing import Meter, QuotaExceeded, consume, entitlements
 from vigilo_core.models import Tier
 from vigilo_core.validation import ValidationError, validate_target_url
+from vigilo_identity.org_repository import (
+    get_usage_count,
+    increment_usage,
+    personal_org_id,
+    plan_id_for_org,
+)
 from vigilo_identity.repository import get_account_by_email, get_or_create_account
 from vigilo_orchestrator.service import (
     advance,
     count_scan_jobs_for_target_since,
-    count_scan_jobs_for_targets,
     create_scan_job,
     get_scan_by_job_id,
     get_scan_job,
@@ -33,7 +38,6 @@ from vigilo_project.repository import (
     get_target,
     get_target_by_origin,
     has_valid_ownership_proof,
-    list_target_ids_for_project,
 )
 from vigilo_security.audit import AuditEvent, audit
 from vigilo_security.authorization import AuthorizationRequest, resolve_authorization
@@ -119,7 +123,7 @@ async def submit_scan(
     # new origin a returning account scanned, skipping the TARGETS quota
     # check `POST /v1/targets` already enforces.
     if existing_account is not None:
-        plan = entitlements(existing_account.plan_id)
+        plan = entitlements(await plan_id_for_org(session, existing_project.org_id))
 
         if existing_target is None:
             target_count = await count_targets_for_project(session, existing_project.id)
@@ -132,6 +136,7 @@ async def submit_scan(
                         action="quota_exceeded",
                         subject=origin,
                         account_id=existing_account.id,
+                        org_id=await personal_org_id(session, existing_account.id),
                         metadata={"meter": Meter.TARGETS.value, "reason": target_decision.reason},
                     ),
                 )
@@ -142,9 +147,8 @@ async def submit_scan(
                     current=target_decision.current,
                 )
 
-        target_ids = await list_target_ids_for_project(session, existing_project.id)
-        since = datetime.now(UTC) - _SCANS_MONTHLY_WINDOW
-        scan_count = await count_scan_jobs_for_targets(session, target_ids, since)
+        # Same counter the Usage page shows (calendar month, UTC), per organisation.
+        scan_count = await get_usage_count(session, existing_project.org_id, "vigilo", "scans")
         scans_decision = consume(scan_count, 1, Meter.SCANS_MONTHLY, plan)
         if not scans_decision.allowed:
             await audit(
@@ -154,6 +158,7 @@ async def submit_scan(
                     action="quota_exceeded",
                     subject=origin,
                     account_id=existing_account.id,
+                    org_id=await personal_org_id(session, existing_account.id),
                     metadata={"meter": Meter.SCANS_MONTHLY.value, "reason": scans_decision.reason},
                 ),
             )
@@ -175,6 +180,7 @@ async def submit_scan(
             action="scan_authorized",
             subject=origin,
             account_id=account.id,
+            org_id=await personal_org_id(session, account.id),
             metadata={"granted_tier": decision.granted_tier.value},
         ),
     )
@@ -183,6 +189,8 @@ async def submit_scan(
         session, target.id, decision.granted_tier, body.email, REGISTRY_VERSION
     )
     job = await advance(session, job.id, "authorized")
+    # Same transaction as the job, so a metered scan always has a job row.
+    await increment_usage(session, await personal_org_id(session, account.id), "vigilo", "scans")
     await session.commit()  # the job row must be durable before a worker can see it
 
     await queue.enqueue_job("run_scan_job", str(job.id))

@@ -25,14 +25,14 @@ export function AgentPromptBlock({
   return (
     <div className="mt-3 rounded-md border border-brand-accent/40 bg-brand-accent/10 p-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-brand-accent">
+        <p className="text-xs font-medium uppercase tracking-wide text-nx-on-accent-soft">
           Paste into your AI coding tool
         </p>
         {!printMode ? (
           <button
             type="button"
             onClick={handleCopy}
-            className="shrink-0 rounded border border-brand-accent/40 px-2 py-0.5 text-xs font-medium text-brand-accent"
+            className="shrink-0 rounded border border-brand-accent/40 px-2 py-0.5 text-xs font-medium text-nx-on-accent-soft"
           >
             {copied ? "Copied" : "Copy"}
           </button>

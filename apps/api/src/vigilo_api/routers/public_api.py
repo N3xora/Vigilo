@@ -26,7 +26,8 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from vigilo_api.api_key_auth import require_scope
+from vigilo_api.access import count_monitors_for_org
+from vigilo_api.api_key_auth import KeyAccount, require_scope
 from vigilo_api.deps import QueueDep, SessionDep
 from vigilo_api.report_rendering import (
     MANIFESTS_BY_CHECK_ID,
@@ -48,9 +49,8 @@ from vigilo_api.schemas import (
 from vigilo_billing import Meter, QuotaExceeded, consume, entitlements
 from vigilo_core.models import Tier
 from vigilo_core.validation import ValidationError, validate_target_url
-from vigilo_identity.models import Account
+from vigilo_identity.org_repository import get_usage_count, increment_usage, plan_id_for_org
 from vigilo_monitoring import (
-    count_monitors_for_account,
     create_monitor,
     get_monitor,
     get_monitor_by_target,
@@ -61,7 +61,6 @@ from vigilo_orchestrator.service import (
     TERMINAL_STATUSES,
     advance,
     count_scan_jobs_for_target_since,
-    count_scan_jobs_for_targets,
     create_scan_job,
     get_scan_by_job_id,
     get_scan_job,
@@ -70,23 +69,23 @@ from vigilo_orchestrator.service import (
 from vigilo_project.repository import (
     count_targets_for_project,
     create_target,
-    get_or_create_default_project,
+    get_or_create_org_project,
+    get_project,
     get_suppressed_fingerprints_for_target,
     get_target,
     get_target_by_origin,
     has_valid_ownership_proof,
-    list_target_ids_for_project,
 )
 from vigilo_reporting import build_sarif_report
 from vigilo_security.audit import AuditEvent, audit
 from vigilo_security.authorization import AuthorizationRequest, resolve_authorization
 
-ScanRunDep = Annotated[Account, require_scope("scan:run")]
-ScanReadDep = Annotated[Account, require_scope("scan:read")]
-ReportReadDep = Annotated[Account, require_scope("report:read")]
-ProjectReadDep = Annotated[Account, require_scope("project:read")]
-MonitorReadDep = Annotated[Account, require_scope("monitor:read")]
-MonitorWriteDep = Annotated[Account, require_scope("monitor:write")]
+ScanRunDep = Annotated[KeyAccount, require_scope("scan:run")]
+ScanReadDep = Annotated[KeyAccount, require_scope("scan:read")]
+ReportReadDep = Annotated[KeyAccount, require_scope("report:read")]
+ProjectReadDep = Annotated[KeyAccount, require_scope("project:read")]
+MonitorReadDep = Annotated[KeyAccount, require_scope("monitor:read")]
+MonitorWriteDep = Annotated[KeyAccount, require_scope("monitor:write")]
 
 _SCANS_MONTHLY_WINDOW = timedelta(days=30)
 _STREAM_POLL_SECONDS = 1.0
@@ -95,15 +94,16 @@ _STREAM_MAX_SECONDS = 120.0
 router = APIRouter(prefix="/public/v1", tags=["public-api"])
 
 
-async def _owned_target(session: SessionDep, account: Account, target_id: uuid.UUID):
+async def _owned_target(session: SessionDep, account: KeyAccount, target_id: uuid.UUID):
+    """The key's organisation must own the target's project."""
     target = await get_target(session, target_id)
-    project = await get_or_create_default_project(session, account.id)
-    if target is None or target.project_id != project.id:
+    project = await get_project(session, target.project_id) if target else None
+    if target is None or project is None or project.org_id != account.org_id:
         raise HTTPException(status_code=404, detail="target not found")
     return target
 
 
-async def _owned_scan_job(session: SessionDep, account: Account, scan_job_id: uuid.UUID):
+async def _owned_scan_job(session: SessionDep, account: KeyAccount, scan_job_id: uuid.UUID):
     job = await get_scan_job(session, scan_job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="scan not found")
@@ -123,7 +123,7 @@ async def public_submit_scan(
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.message) from exc
 
-    project = await get_or_create_default_project(session, account.id)
+    project = await get_or_create_org_project(session, account.org_id, account.id)
     existing_target = await get_target_by_origin(session, project.id, origin)
     target_verification_status = (
         existing_target.verification_status if existing_target else Tier.PASSIVE
@@ -137,7 +137,7 @@ async def public_submit_scan(
         recent_scan_count_24h = await count_scan_jobs_for_target_since(
             session, existing_target.id, since_24h
         )
-    plan = entitlements(account.plan_id)
+    plan = entitlements(await plan_id_for_org(session, account.org_id))
 
     decision = resolve_authorization(
         AuthorizationRequest(
@@ -160,6 +160,7 @@ async def public_submit_scan(
                 action="scan_denied",
                 subject=origin,
                 account_id=account.id,
+                org_id=account.org_id,
                 metadata={"reason": decision.reason},
             ),
         )
@@ -177,6 +178,7 @@ async def public_submit_scan(
                     action="quota_exceeded",
                     subject=origin,
                     account_id=account.id,
+                    org_id=account.org_id,
                     metadata={"meter": Meter.TARGETS.value, "reason": target_decision.reason},
                 ),
             )
@@ -187,9 +189,8 @@ async def public_submit_scan(
                 current=target_decision.current,
             )
 
-    target_ids = await list_target_ids_for_project(session, project.id)
-    since = datetime.now(UTC) - _SCANS_MONTHLY_WINDOW
-    scan_count = await count_scan_jobs_for_targets(session, target_ids, since)
+    # Same counter the Usage page shows (calendar month, UTC), per organisation.
+    scan_count = await get_usage_count(session, account.org_id, "vigilo", "scans")
     scans_decision = consume(scan_count, 1, Meter.SCANS_MONTHLY, plan)
     if not scans_decision.allowed:
         await audit(
@@ -199,6 +200,7 @@ async def public_submit_scan(
                 action="quota_exceeded",
                 subject=origin,
                 account_id=account.id,
+                org_id=account.org_id,
                 metadata={"meter": Meter.SCANS_MONTHLY.value, "reason": scans_decision.reason},
             ),
         )
@@ -217,13 +219,15 @@ async def public_submit_scan(
             action="scan_authorized",
             subject=origin,
             account_id=account.id,
+            org_id=account.org_id,
             metadata={"granted_tier": decision.granted_tier.value},
         ),
     )
     job = await create_scan_job(
-        session, target.id, decision.granted_tier, account.notification_email, REGISTRY_VERSION
+        session, target.id, decision.granted_tier, account.email, REGISTRY_VERSION
     )
     job = await advance(session, job.id, "authorized")
+    await increment_usage(session, account.org_id, "vigilo", "scans")
     await session.commit()
 
     await queue.enqueue_job("run_scan_job", str(job.id))
@@ -359,7 +363,7 @@ async def public_get_target_scores(
 async def public_list_projects(
     session: SessionDep, account: ProjectReadDep
 ) -> list[ProjectResponse]:
-    project = await get_or_create_default_project(session, account.id)
+    project = await get_or_create_org_project(session, account.org_id, account.id)
     return [
         ProjectResponse(project_id=project.id, name=project.name, created_at=project.created_at)
     ]
@@ -385,7 +389,7 @@ async def public_create_target_monitor(
     account: MonitorWriteDep,
 ) -> MonitorResponse:
     target = await _owned_target(session, account, target_id)
-    plan = entitlements(account.plan_id)
+    plan = entitlements(await plan_id_for_org(session, account.org_id))
 
     if plan.monitoring_frequency is None:
         raise QuotaExceeded("monitoring is not included in the account's plan")
@@ -395,7 +399,7 @@ async def public_create_target_monitor(
         raise HTTPException(status_code=422, detail="cadence_hours must be between 1 and 168")
 
     if await get_monitor_by_target(session, target.id) is None:
-        current_count = await count_monitors_for_account(session, account.id)
+        current_count = await count_monitors_for_org(session, account.org_id)
         decision = consume(current_count, 1, Meter.MONITORS, plan)
         if not decision.allowed:
             raise QuotaExceeded(
@@ -430,8 +434,9 @@ async def public_disable_monitor(
     monitor_id: uuid.UUID, session: SessionDep, account: MonitorWriteDep
 ) -> MonitorResponse:
     existing = await get_monitor(session, monitor_id)
-    if existing is None or existing.account_id != account.id:
+    if existing is None:
         raise HTTPException(status_code=404, detail="monitor not found")
+    await _owned_target(session, account, existing.target_id)
 
     monitor = await disable_monitor_row(session, monitor_id)
     if monitor is None:

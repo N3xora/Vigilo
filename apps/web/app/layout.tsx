@@ -14,9 +14,14 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Absolute URLs for social images need a base; WEB_APP_URL is the public origin.
+const siteUrl = process.env.WEB_APP_URL ?? "http://localhost:3000";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: brand.name,
   description: brand.shortDescription,
+  openGraph: { siteName: brand.name, type: "website" },
 };
 
 // The Clerk application can be shared with other products (its own name

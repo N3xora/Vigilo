@@ -12,11 +12,19 @@ import secrets
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vigilo_identity.models import Account, ApiKey, BrandingProfile, Subscription
-from vigilo_identity.orm import AccountRow, ApiKeyRow, BrandingProfileRow, SubscriptionRow
+from vigilo_identity.org_repository import personal_org_id
+from vigilo_identity.orm import (
+    AccountRow,
+    ApiKeyRow,
+    BrandingProfileRow,
+    OrganizationRow,
+    SubscriptionRow,
+)
 
 
 async def get_account_by_id(session: AsyncSession, account_id: object) -> Account | None:
@@ -29,47 +37,6 @@ async def get_account_by_clerk_id(session: AsyncSession, clerk_user_id: str) -> 
     result = await session.execute(stmt)
     row = result.scalar_one_or_none()
     return Account.model_validate(row) if row else None
-
-
-async def get_account_by_clerk_org_id(session: AsyncSession, clerk_org_id: str) -> Account | None:
-    stmt = select(AccountRow).where(AccountRow.clerk_org_id == clerk_org_id)
-    result = await session.execute(stmt)
-    row = result.scalar_one_or_none()
-    return Account.model_validate(row) if row else None
-
-
-def org_account_email(clerk_org_id: str) -> str:
-    """The synthetic, never-deliverable `accounts.email` of an org account
-    (the column is unique and non-null; `.invalid` is reserved by RFC 2606)."""
-    return f"{clerk_org_id}@org.vigilo.invalid"
-
-
-async def get_or_create_org_account(
-    session: AsyncSession, clerk_org_id: str, contact_email: str | None
-) -> Account:
-    """Look up the account owned by a Clerk organisation; create it (active,
-    free) on the first request made inside that organisation. `contact_email`
-    is only used at creation — it is the first acting member's email."""
-    result = await session.execute(
-        select(AccountRow).where(AccountRow.clerk_org_id == clerk_org_id)
-    )
-    existing_row = result.scalar_one_or_none()
-    if existing_row is not None:
-        # An account created by a plan sync has no contact yet; the first member to
-        # act inside the organisation becomes it.
-        if existing_row.contact_email is None and contact_email:
-            existing_row.contact_email = contact_email
-            await session.flush()
-        return Account.model_validate(existing_row)
-    row = AccountRow(
-        email=org_account_email(clerk_org_id),
-        clerk_org_id=clerk_org_id,
-        contact_email=contact_email,
-        status="active",
-    )
-    session.add(row)
-    await session.flush()
-    return Account.model_validate(row)
 
 
 async def get_account_by_email(session: AsyncSession, email: str) -> Account | None:
@@ -100,14 +67,26 @@ async def get_or_create_account(
     row = result.scalar_one_or_none()
 
     if row is None:
-        row = AccountRow(
-            email=email,
-            clerk_user_id=clerk_user_id,
-            status="active" if clerk_user_id else "anonymous",
-        )
-        session.add(row)
-        await session.flush()
-        return Account.model_validate(row)
+        try:
+            # Savepoint: two requests can arrive for a brand-new person at once
+            # (a page and its layout both call the API on first load). The
+            # unique constraints pick one winner; the loser reads its row back.
+            async with session.begin_nested():
+                row = AccountRow(
+                    email=email,
+                    clerk_user_id=clerk_user_id,
+                    status="active" if clerk_user_id else "anonymous",
+                )
+                session.add(row)
+                await session.flush()
+            return Account.model_validate(row)
+        except IntegrityError:
+            match = AccountRow.email == email
+            if clerk_user_id:
+                match = or_(match, AccountRow.clerk_user_id == clerk_user_id)
+            row = (await session.execute(select(AccountRow).where(match))).scalars().first()
+            if row is None:
+                raise
 
     if clerk_user_id and row.clerk_user_id is None:
         row.clerk_user_id = clerk_user_id
@@ -135,6 +114,22 @@ async def get_subscription_by_account(
     return Subscription.model_validate(row) if row else None
 
 
+async def subscription_event_is_stale(
+    session: AsyncSession, provider_subscription_id: str, event_created: datetime | None
+) -> bool:
+    """Webhook delivery is not ordered: an event older than the last one
+    applied to the same subscription must not roll its state back."""
+    if event_created is None:
+        return False
+    result = await session.execute(
+        select(SubscriptionRow.provider_event_created).where(
+            SubscriptionRow.provider_subscription_id == provider_subscription_id
+        )
+    )
+    last = result.scalar_one_or_none()
+    return last is not None and event_created < last
+
+
 async def upsert_subscription(
     session: AsyncSession,
     account_id: uuid.UUID,
@@ -143,13 +138,25 @@ async def upsert_subscription(
     provider: str,
     provider_subscription_id: str,
     current_period_end: datetime | None,
+    *,
+    org_id: uuid.UUID | None = None,
+    product_slug: str = "vigilo",
+    billing_interval: str = "month",
+    customer_id: str | None = None,
+    event_created: datetime | None = None,
+    cancel_at_period_end: bool = False,
 ) -> Subscription:
-    """Keyed on `provider_subscription_id` — a webhook replaying the same
-    event, or a later status update for the same subscription, updates the
-    existing row rather than creating a duplicate. Cascades `AccountRow
-    .plan_id` in the same flush, identical to `mark_proof_verified()`
-    cascading `Target.verification_status`
-    (`packages/project/src/vigilo_project/repository.py`)."""
+    """A subscription belongs to an organisation (default: `account_id`'s
+    personal one) and a product; `account_id` is who paid. Keyed on
+    `provider_subscription_id` — a webhook replaying the same event, or a later
+    status update for the same subscription, updates the existing row rather
+    than creating a duplicate. For a *personal* organisation the same flush
+    also sets `AccountRow.plan_id`, the legacy per-account view `/v1/me` still
+    reads; a team organisation's plan lives only here, on its subscription
+    (`vigilo_identity.org_repository.plan_id_for_org`). `customer_id` is the
+    provider's customer, remembered on the organisation so its next checkout
+    reuses it."""
+    org_id = org_id or await personal_org_id(session, account_id)
     result = await session.execute(
         select(SubscriptionRow).where(
             SubscriptionRow.provider_subscription_id == provider_subscription_id
@@ -160,28 +167,56 @@ async def upsert_subscription(
     if row is None:
         row = SubscriptionRow(
             account_id=account_id,
+            org_id=org_id,
+            product_slug=product_slug,
+            billing_interval=billing_interval,
             plan_id=plan_id,
             status=status,
             provider=provider,
             provider_subscription_id=provider_subscription_id,
             current_period_end=current_period_end,
+            provider_event_created=event_created,
+            cancel_at_period_end=cancel_at_period_end,
         )
         session.add(row)
     else:
         row.plan_id = plan_id
         row.status = status
         row.current_period_end = current_period_end
+        row.billing_interval = billing_interval
+        row.cancel_at_period_end = cancel_at_period_end
+        if event_created is not None:
+            row.provider_event_created = event_created
 
-    # A canceled/non-active subscription must NOT leave the account holding
-    # its paid entitlements forever — entitlements() only ever looks at
-    # Account.plan_id, so a cancellation has to actually reset it to "free"
-    # here, not just record status="canceled" on a row nothing re-reads.
-    account_row = await session.get(AccountRow, account_id)
-    if account_row is not None:
-        account_row.plan_id = plan_id if status == "active" else "free"
+    org_row = await session.get(OrganizationRow, org_id)
+    if org_row is not None:
+        if customer_id and org_row.billing_customer_id is None:
+            org_row.billing_customer_id = customer_id
+        # A canceled/non-active subscription must NOT leave the account
+        # holding paid entitlements forever, so a personal organisation's
+        # cancellation resets the legacy account plan to "free".
+        if org_row.is_personal and product_slug == "vigilo":
+            account_row = await session.get(AccountRow, org_row.created_by)
+            if account_row is not None:
+                account_row.plan_id = plan_id if status == "active" else "free"
 
     await session.flush()
     return Subscription.model_validate(row)
+
+
+async def get_subscription_for_org(
+    session: AsyncSession, org_id: uuid.UUID, product_slug: str = "vigilo"
+) -> Subscription | None:
+    """The organisation's most recent subscription for a product, any status."""
+    stmt = (
+        select(SubscriptionRow)
+        .where(SubscriptionRow.org_id == org_id, SubscriptionRow.product_slug == product_slug)
+        .order_by(SubscriptionRow.created_at.desc())
+        .limit(1)
+    )
+    result = await session.execute(stmt)
+    row = result.scalar_one_or_none()
+    return Subscription.model_validate(row) if row else None
 
 
 def hash_api_key(raw_key: str) -> str:
@@ -197,14 +232,21 @@ def hash_api_key(raw_key: str) -> str:
 
 
 async def create_api_key(
-    session: AsyncSession, account_id: uuid.UUID, name: str, scopes: list[str]
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    name: str,
+    scopes: list[str],
+    org_id: uuid.UUID | None = None,
 ) -> tuple[ApiKey, str]:
     """Returns `(api_key, plaintext_key)` — the plaintext is returned
     exactly once, at creation, and never persisted (`key_hash` only),
-    matching `create_share_link()`'s exact token pattern."""
+    matching `create_share_link()`'s exact token pattern. The key belongs to
+    `org_id` (default: the creator's personal org), so it survives its
+    creator leaving the organisation."""
     raw_key = f"vglo_{secrets.token_urlsafe(32)}"
     row = ApiKeyRow(
         account_id=account_id,
+        org_id=org_id or await personal_org_id(session, account_id),
         name=name,
         prefix=raw_key[:12],
         key_hash=hash_api_key(raw_key),
@@ -228,6 +270,22 @@ async def list_api_keys_for_account(session: AsyncSession, account_id: uuid.UUID
         .order_by(ApiKeyRow.created_at.desc())
     )
     return [ApiKey.model_validate(row) for row in result.scalars().all()]
+
+
+async def list_api_keys_for_org(session: AsyncSession, org_id: uuid.UUID) -> list[ApiKey]:
+    result = await session.execute(
+        select(ApiKeyRow).where(ApiKeyRow.org_id == org_id).order_by(ApiKeyRow.created_at.desc())
+    )
+    return [ApiKey.model_validate(row) for row in result.scalars().all()]
+
+
+async def count_api_keys_for_org(session: AsyncSession, org_id: uuid.UUID) -> int:
+    result = await session.execute(
+        select(func.count())
+        .select_from(ApiKeyRow)
+        .where(ApiKeyRow.org_id == org_id, ApiKeyRow.revoked_at.is_(None))
+    )
+    return result.scalar_one()
 
 
 async def revoke_api_key(session: AsyncSession, api_key_id: uuid.UUID) -> ApiKey | None:
@@ -260,35 +318,49 @@ async def count_api_keys_for_account(session: AsyncSession, account_id: uuid.UUI
     return result.scalar_one()
 
 
-async def get_branding_profile(
-    session: AsyncSession, account_id: uuid.UUID
+async def get_branding_profile_for_org(
+    session: AsyncSession, org_id: uuid.UUID
 ) -> BrandingProfile | None:
     result = await session.execute(
-        select(BrandingProfileRow).where(BrandingProfileRow.account_id == account_id)
+        select(BrandingProfileRow).where(BrandingProfileRow.org_id == org_id)
     )
     row = result.scalar_one_or_none()
     return BrandingProfile.model_validate(row) if row else None
 
 
+async def get_branding_profile(
+    session: AsyncSession, account_id: uuid.UUID
+) -> BrandingProfile | None:
+    """The account's personal organisation's profile."""
+    return await get_branding_profile_for_org(session, await personal_org_id(session, account_id))
+
+
 async def upsert_branding_profile(
     session: AsyncSession,
     account_id: uuid.UUID,
+    *,
+    org_id: uuid.UUID | None = None,
     **fields: str | None,
 ) -> BrandingProfile:
-    """`fields` are applied as a partial update — only keys actually passed
-    are written; a field the caller never mentions keeps its existing
-    value rather than being reset to `None` (the caller, `apps/api`'s
-    `PUT /v1/me/branding-profile`, passes `body.model_dump(exclude_unset=True)`
-    so an omitted request field never reaches here at all, while an
-    explicit `null` in the request does still clear it)."""
+    """One profile per organisation (default: `account_id`'s personal org);
+    `account_id` records who saved it. `fields` are applied as a partial
+    update — only keys actually passed are written; a field the caller never
+    mentions keeps its existing value rather than being reset to `None` (the
+    caller, `apps/api`'s `PUT /v1/me/branding-profile`, passes
+    `body.model_dump(exclude_unset=True)` so an omitted request field never
+    reaches here at all, while an explicit `null` in the request does still
+    clear it)."""
+    org_id = org_id or await personal_org_id(session, account_id)
     result = await session.execute(
-        select(BrandingProfileRow).where(BrandingProfileRow.account_id == account_id)
+        select(BrandingProfileRow).where(BrandingProfileRow.org_id == org_id)
     )
     row = result.scalar_one_or_none()
 
     if row is None:
-        row = BrandingProfileRow(account_id=account_id)
+        row = BrandingProfileRow(account_id=account_id, org_id=org_id)
         session.add(row)
+    else:
+        row.account_id = account_id
 
     for key, value in fields.items():
         setattr(row, key, value)
@@ -300,31 +372,3 @@ async def upsert_branding_profile(
     # outside an async context.
     await session.refresh(row)
     return BrandingProfile.model_validate(row)
-
-
-async def set_org_account_plan(
-    session: AsyncSession, clerk_org_id: str, plan_id: str
-) -> Account | None:
-    """Apply a plan decided by NEXORA Core to an organisation's account.
-
-    `plan_id` is what `entitlements()` reads, so this is the whole effect. A paid
-    plan creates the account if the organisation has not used Vigilo yet; a
-    downgrade for an organisation Vigilo has never seen changes nothing (and
-    returns None), so a deleted organisation is never resurrected by a late event.
-    """
-    result = await session.execute(
-        select(AccountRow).where(AccountRow.clerk_org_id == clerk_org_id)
-    )
-    row = result.scalar_one_or_none()
-    if row is None:
-        if plan_id == "free":
-            return None
-        row = AccountRow(
-            email=org_account_email(clerk_org_id),
-            clerk_org_id=clerk_org_id,
-            status="active",
-        )
-        session.add(row)
-    row.plan_id = plan_id
-    await session.flush()
-    return Account.model_validate(row)

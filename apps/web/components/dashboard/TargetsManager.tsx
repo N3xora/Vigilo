@@ -8,7 +8,15 @@ import { TargetRow } from "./TargetRow";
 
 const JWT_TEMPLATE = process.env.NEXT_PUBLIC_CLERK_JWT_TEMPLATE ?? "vigilo-api";
 
-export function TargetsManager({ initialTargets }: { initialTargets: TargetResponse[] }) {
+export function TargetsManager({
+  initialTargets,
+  orgId,
+  canAdd = true,
+}: {
+  initialTargets: TargetResponse[];
+  orgId: string;
+  canAdd?: boolean;
+}) {
   const { getToken } = useAuth();
   const [targets, setTargets] = useState<TargetResponse[]>(initialTargets);
   const [origin, setOrigin] = useState("");
@@ -21,7 +29,7 @@ export function TargetsManager({ initialTargets }: { initialTargets: TargetRespo
     try {
       const token = await getToken({ template: JWT_TEMPLATE });
       if (!token) throw new ApiError(401, null);
-      const target = await api.createTarget(origin, token);
+      const target = await api.createTarget(origin, token, orgId);
       setTargets((current) => [...current, target]);
       setOrigin("");
     } catch (err) {
@@ -50,7 +58,7 @@ export function TargetsManager({ initialTargets }: { initialTargets: TargetRespo
         <button
           type="button"
           onClick={handleAdd}
-          disabled={busy || origin.trim() === ""}
+          disabled={!canAdd || busy || origin.trim() === ""}
           className="rounded-md bg-brand-primary px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
         >
           {busy ? "Adding…" : "Add target"}
@@ -60,7 +68,7 @@ export function TargetsManager({ initialTargets }: { initialTargets: TargetRespo
       {error ? <p className="text-xs text-severity-critical">{error}</p> : null}
 
       {targets.length === 0 ? (
-        <p className="text-sm text-black/50 dark:text-white/50">No targets yet.</p>
+        <p className="text-sm text-black/60 dark:text-white/65">No targets yet.</p>
       ) : (
         <ul className="space-y-2">
           {targets.map((target) => (

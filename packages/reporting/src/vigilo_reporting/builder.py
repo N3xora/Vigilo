@@ -23,6 +23,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from vigilo_core.models import CheckManifest, Finding, Score
+from vigilo_reporting.context import stack_labels, why_here
 from vigilo_reporting.models import (
     EvidenceView,
     RemediationPrompt,
@@ -50,6 +51,7 @@ def _to_report_finding(
     generated_at: datetime,
     remediations_by_check_id: dict[str, RemediationPrompt],
     suppressed_fingerprints: frozenset[str],
+    stack: list[str],
 ) -> ReportFinding:
     prompt = remediations_by_check_id.get(finding.check_id) or template_remediation(
         finding, manifest
@@ -78,6 +80,11 @@ def _to_report_finding(
         evidence=evidence,
         fingerprint=finding.fingerprint,
         suppressed=finding.fingerprint in suppressed_fingerprints,
+        why_here=(
+            why_here(finding.check_id, manifest.category, finding.title, stack)
+            if finding.verdict.value == "failed"
+            else None
+        ),
     )
 
 
@@ -89,6 +96,7 @@ def build_report(
     generated_at: datetime,
     remediations_by_check_id: dict[str, RemediationPrompt] | None = None,
     suppressed_fingerprints: frozenset[str] | None = None,
+    stack: list[str] | None = None,
 ) -> ReportDocument:
     """`score` is never recomputed from `suppressed_fingerprints` — a
     suppression is presentation-only (marks a finding, never changes
@@ -98,10 +106,16 @@ def build_report(
     reasoning for why this is deliberate, not an oversight)."""
     remediations = remediations_by_check_id or {}
     suppressed = suppressed_fingerprints or frozenset()
+    stack_keys = stack or []
     ordered = sorted(findings, key=_sort_key)
     report_findings = [
         _to_report_finding(
-            finding, manifests_by_check_id[finding.check_id], generated_at, remediations, suppressed
+            finding,
+            manifests_by_check_id[finding.check_id],
+            generated_at,
+            remediations,
+            suppressed,
+            stack_keys,
         )
         for finding in ordered
     ]
@@ -111,4 +125,5 @@ def build_report(
         score=score,
         generated_at=generated_at,
         findings=report_findings,
+        stack=stack_labels(stack_keys),
     )

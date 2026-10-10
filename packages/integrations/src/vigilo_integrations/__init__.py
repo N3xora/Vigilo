@@ -11,8 +11,10 @@ from vigilo_integrations.billing import (
     parse_webhook_event,
     verify_webhook_signature,
 )
+from vigilo_integrations.clerk import delete_clerk_user
 from vigilo_integrations.errors import (
     BillingProviderError,
+    IdentityProviderError,
     LlmProviderError,
     MailDeliveryFailed,
     ObjectStoreError,
@@ -20,6 +22,8 @@ from vigilo_integrations.errors import (
 from vigilo_integrations.llm import generate_remediation_text
 from vigilo_integrations.mail import send_transactional_email
 from vigilo_integrations.storage import (
+    delete_evidence_bundle,
+    delete_report_pdf,
     get_evidence_bundle,
     get_report_pdf,
     put_evidence_bundle,
@@ -34,6 +38,10 @@ __all__ = [
     "ObjectStoreError",
     "LlmProviderError",
     "BillingProviderError",
+    "IdentityProviderError",
+    "delete_clerk_user",
+    "delete_evidence_bundle",
+    "delete_report_pdf",
     "send_transactional_email",
     "generate_remediation_text",
     "put_evidence_bundle",

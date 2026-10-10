@@ -28,12 +28,6 @@ GetSigningKey = Callable[[str], Any]
 class ClerkClaims:
     user_id: str
     email: str | None
-    # Set when the session is acting inside a Clerk organisation. The
-    # `vigilo-api` JWT template must include `org_id` (`{{org.id}}`) and
-    # `org_role` (`{{org.role}}`); without them every request resolves to the
-    # caller's personal account exactly as before.
-    org_id: str | None = None
-    org_role: str | None = None
 
 
 class ClerkAuthError(StructuredError):
@@ -68,16 +62,4 @@ def verify_clerk_jwt(token: str, get_signing_key: GetSigningKey | None = None) -
     if not user_id:
         raise ClerkAuthError("session token is missing a subject claim")
 
-    # Clerk's default session token nests the organisation under `o`
-    # (`o.id`, `o.rol`); a custom JWT template uses flat claims.
-    nested = payload.get("o") if isinstance(payload.get("o"), dict) else {}
-    org_id = payload.get("org_id") or nested.get("id") or None
-    org_role = payload.get("org_role") or nested.get("rol") or None
-    if org_role and not str(org_role).startswith("org:"):
-        org_role = f"org:{org_role}"
-    return ClerkClaims(
-        user_id=user_id,
-        email=payload.get("email"),
-        org_id=str(org_id) if org_id else None,
-        org_role=str(org_role) if org_role else None,
-    )
+    return ClerkClaims(user_id=user_id, email=payload.get("email"))

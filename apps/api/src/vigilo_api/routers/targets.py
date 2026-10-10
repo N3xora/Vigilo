@@ -13,8 +13,11 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from vigilo_api.deps import AccountDep, QueueDep, SessionDep
+from vigilo_api.access import plan_id_for_target, require_target_role
+from vigilo_api.audit_log import record
+from vigilo_api.deps import AccountDep, ActiveOrgDep, QueueDep, SessionDep
 from vigilo_api.schemas import (
+    EntitlementsResponse,
     TargetCreate,
     TargetResponse,
     VerificationCheckResponse,
@@ -29,9 +32,8 @@ from vigilo_identity.models import Account
 from vigilo_project.repository import (
     count_targets_for_project,
     create_target,
-    get_or_create_default_project,
+    get_or_create_org_project,
     get_ownership_proof,
-    get_target,
     get_target_by_origin,
     issue_ownership_proof,
     list_targets_for_project,
@@ -50,50 +52,53 @@ def _to_response(target: Target) -> TargetResponse:
     )
 
 
-async def _owned_target_or_404(
-    session: AsyncSession, account: Account, target_id: uuid.UUID
+async def _target_or_404(
+    session: AsyncSession, account: Account, target_id: uuid.UUID, minimum: str = "viewer"
 ) -> Target:
-    target = await get_target(session, target_id)
-    project = await get_or_create_default_project(session, account.id)
-    if target is None or target.project_id != project.id:
-        raise HTTPException(status_code=404, detail="target not found")
-    return target
+    """Org-aware: any member with at least `minimum` role; non-members get 404."""
+    return await require_target_role(session, account, target_id, minimum)
 
 
 @router.post("", status_code=201, response_model=TargetResponse)
 async def create_target_endpoint(
     body: TargetCreate,
     account: AccountDep,
+    org: ActiveOrgDep,
     session: SessionDep,
 ) -> TargetResponse:
+    org.require("member")
     try:
         origin = validate_target_url(body.origin)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.message) from exc
 
-    project = await get_or_create_default_project(session, account.id)
+    project = await get_or_create_org_project(session, org.org_id, account.id)
 
     # Re-adding an already-tracked origin is idempotent-by-origin
     # (create_target) and must never count against quota — only a genuinely
     # new target is metered.
     if await get_target_by_origin(session, project.id, origin) is None:
         current_count = await count_targets_for_project(session, project.id)
-        decision = consume(current_count, 1, Meter.TARGETS, entitlements(account.plan_id))
+        decision = consume(current_count, 1, Meter.TARGETS, entitlements(org.plan_id))
         if not decision.allowed:
             raise QuotaExceeded(
                 "targets limit reached for plan", limit=decision.limit, current=decision.current
             )
 
+    is_new = await get_target_by_origin(session, project.id, origin) is None
     target = await create_target(session, project.id, origin)
+    if is_new:
+        await record(session, account, org.org_id, "target_added", origin)
     return _to_response(target)
 
 
 @router.get("", response_model=list[TargetResponse])
 async def list_targets_endpoint(
     account: AccountDep,
+    org: ActiveOrgDep,
     session: SessionDep,
 ) -> list[TargetResponse]:
-    project = await get_or_create_default_project(session, account.id)
+    project = await get_or_create_org_project(session, org.org_id, account.id)
     targets = await list_targets_for_project(session, project.id)
     return [_to_response(target) for target in targets]
 
@@ -104,8 +109,12 @@ async def get_target_endpoint(
     account: AccountDep,
     session: SessionDep,
 ) -> TargetResponse:
-    target = await _owned_target_or_404(session, account, target_id)
-    return _to_response(target)
+    target = await _target_or_404(session, account, target_id)
+    response = _to_response(target)
+    response.org_entitlements = EntitlementsResponse.model_validate(
+        entitlements(await plan_id_for_target(session, target.id))
+    )
+    return response
 
 
 @router.post(
@@ -117,7 +126,7 @@ async def initiate_verification(
     account: AccountDep,
     session: SessionDep,
 ) -> VerificationInitiateResponse:
-    target = await _owned_target_or_404(session, account, target_id)
+    target = await _target_or_404(session, account, target_id, "member")
     proof = await issue_ownership_proof(session, target.id, body.method)
 
     namespaces = config().brand.namespaces
@@ -152,7 +161,7 @@ async def check_verification(
     session: SessionDep,
     queue: QueueDep,
 ) -> VerificationCheckResponse:
-    await _owned_target_or_404(session, account, target_id)
+    await _target_or_404(session, account, target_id, "member")
     proof = await get_ownership_proof(session, proof_id)
     if proof is None or proof.target_id != target_id:
         raise HTTPException(status_code=404, detail="ownership proof not found")

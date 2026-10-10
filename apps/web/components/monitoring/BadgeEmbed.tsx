@@ -12,7 +12,7 @@ export function BadgeEmbed({ targetId }: { targetId: string }) {
       <p className="text-xs text-black/60 dark:text-white/60 mb-1">
         Updates automatically after each scan. Copy this into your README or site:
       </p>
-      <pre className="overflow-x-auto rounded bg-black/5 dark:bg-white/10 px-3 py-2 text-xs">
+      <pre className="relative overflow-x-auto rounded bg-black/5 dark:bg-white/10 px-3 py-2 text-xs">
         {snippet}
       </pre>
     </div>
