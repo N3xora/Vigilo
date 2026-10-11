@@ -23,8 +23,10 @@ concurrency:
 
 jobs:
   smoke:
-    # Never on forks: they have no business probing this host.
-    if: github.repository == 'N3xora/Vigilo'
+    # Not on forks: they have no business probing this host. This tests the fork flag, not
+    # the owner name, which changes if the repository is renamed or transferred (that
+    # silently skipped every run once). If the flag is absent the job runs.
+    if: ${{ !github.event.repository.fork }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
