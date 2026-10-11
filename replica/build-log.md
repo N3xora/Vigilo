@@ -138,3 +138,6 @@ Audit of all 65 API routes: 11 have no auth dependency; 9 are public by design (
 
 ## 2026-10-11 logo concepts
 `replica/logo/`: three concept marks (A steady lens, B vigil V, C proof in the lens) as 64x64 SVGs plus a self-contained `preview.html` board (16/32/64/128 px, lockup, browser tab). Nothing shipped changes: `apps/web/app/icon.svg` is still the placeholder. Not yet done: owner pick, the 1024px no-transparency app icon, favicon set, 1200x630 social image, and the check against the logos of Nexora (Capterra), Vigilos and VigiloSec, which I cannot do from here. The name itself is still uncleared for trademark.
+
+## 2026-10-11 dependency audit
+`pip-audit` over the locked Python set (107 pins): no known vulnerabilities (Mako was bumped earlier for GHSA-5639-2j2p-m4mx). `npm audit --omit=dev` (production web dependencies): 0 vulnerabilities. Full `npm audit` still lists dev-only findings; none ship to production. The Python audit had not been run before today.
