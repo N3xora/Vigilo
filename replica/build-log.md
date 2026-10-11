@@ -141,3 +141,6 @@ Audit of all 65 API routes: 11 have no auth dependency; 9 are public by design (
 
 ## 2026-10-11 dependency audit
 `pip-audit` over the locked Python set (107 pins): no known vulnerabilities (Mako was bumped earlier for GHSA-5639-2j2p-m4mx). `npm audit --omit=dev` (production web dependencies): 0 vulnerabilities. Full `npm audit` still lists dev-only findings; none ship to production. The Python audit had not been run before today.
+
+## 2026-10-11 production deploy: anonymous scan throttle
+Backup first (`vigilo-backup-20261011T120309Z.tar.gz`, 36 KB). Deployed `8c76349` (main after #15, includes the throttle) with `deploy.sh vigilo api web scanner` at 12:06 UTC; no migration. Smoke check: all 10 checks passed. Not yet confirmed on production: the 429 itself (submitting scans from one address would create real scan jobs), so verify it with a few scans from one address when convenient. Default limits: 30 per address and 10 per email per hour.
