@@ -150,3 +150,6 @@ Backup first (`vigilo-backup-20261011T120309Z.tar.gz`, 36 KB). Deployed `8c76349
 
 ## 2026-10-11 engine plan
 `replica/engine-plan.md`: a draft plan for connecting another product engine, with the open decisions (who bills, which engine first, shared login). Nothing built.
+
+## 2026-10-11 backups on a schedule, disk check, restore test
+`scripts/install-backup-cron.sh` (daily backup at 03:00 with 14-day retention, disk check at 03:30; `--dry-run` supported) and `scripts/check-disk.sh` (non-zero at 85% by default). Both tested locally in dry-run and for exit codes; **not installed on the server** and not run there. A real restore test was done: the 2026-10-10 backup restored cleanly into a scratch Postgres (revision 0009, 5 accounts, 5 projects, 18 tables). Still open: nothing alerts on a high disk or a failed backup, and backups are not yet copied off the host.
