@@ -6,7 +6,7 @@ set -euo pipefail
 threshold="${1:-85}"
 used="$(df -P / | awk 'NR==2 {gsub("%","",$5); print $5}')"
 stamp="$(date -u +%FT%TZ)"
-if [ "$used" -ge "$threshold" ]; then
+if [[ "$used" -ge "$threshold" ]]; then
   echo "$stamp DISK HIGH: / is at ${used}% (threshold ${threshold}%)"
   exit 1
 fi
