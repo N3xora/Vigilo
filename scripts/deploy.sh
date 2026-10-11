@@ -20,6 +20,8 @@ if [ -z "${COMPOSE_FILE:-}" ] && ! grep -q '^COMPOSE_FILE=' .env 2>/dev/null; th
 fi
 
 git pull
+# Reported by the API's /version, so the running commit is visible from outside.
+export GIT_SHA="$(git rev-parse --short HEAD)"
 docker compose up -d --build
 docker compose exec -T api \
   uv run alembic -c packages/persistence/alembic.ini upgrade head
