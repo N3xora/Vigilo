@@ -59,7 +59,7 @@ router = APIRouter(prefix="/v1/billing", tags=["billing"])
 plans_router = APIRouter(prefix="/v1", tags=["billing"])
 
 
-@router.post("/checkout", response_model=CheckoutResponse)
+@router.post("/checkout")
 async def create_checkout(
     body: CheckoutRequest, account: AccountDep, org: ActiveOrgDep, session: SessionDep
 ) -> CheckoutResponse:
@@ -98,7 +98,7 @@ async def create_checkout(
     return CheckoutResponse(checkout_url=checkout_url)
 
 
-@router.post("/portal", response_model=PortalResponse)
+@router.post("/portal")
 async def create_portal(
     account: AccountDep, org: ActiveOrgDep, session: SessionDep
 ) -> PortalResponse:
@@ -136,7 +136,7 @@ def _plan_or_none(plan_id: str):
         return None
 
 
-@router.get("/summary", response_model=BillingSummaryResponse)
+@router.get("/summary")
 async def billing_summary(org: ActiveOrgDep, session: SessionDep) -> BillingSummaryResponse:
     """What the active organisation pays for, across every product, on one
     screen. Owners and admins only: it shows prices and renewal dates."""
@@ -188,7 +188,7 @@ async def billing_summary(org: ActiveOrgDep, session: SessionDep) -> BillingSumm
     )
 
 
-@plans_router.get("/plans", response_model=list[PlanResponse])
+@plans_router.get("/plans")
 async def list_plans() -> list[PlanResponse]:
     return [PlanResponse.model_validate(plan) for plan in PLANS.values()]
 

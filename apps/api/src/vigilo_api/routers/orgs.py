@@ -130,7 +130,7 @@ async def _entitlements_for(session, org_id: uuid.UUID) -> EntitlementsResponse:
     return EntitlementsResponse.model_validate(entitlements(await plan_id_for_org(session, org_id)))
 
 
-@router.get("/orgs", response_model=list[OrgResponse])
+@router.get("/orgs")
 async def list_my_orgs(account: AccountDep, session: SessionDep) -> list[OrgResponse]:
     await ensure_personal_org(session, account)
     rows = await list_orgs_for_account(session, account.id)
@@ -147,7 +147,7 @@ async def list_my_orgs(account: AccountDep, session: SessionDep) -> list[OrgResp
     ]
 
 
-@router.post("/orgs", status_code=201, response_model=OrgResponse)
+@router.post("/orgs", status_code=201)
 async def create_my_org(body: OrgCreate, account: AccountDep, session: SessionDep) -> OrgResponse:
     try:
         org = await create_org(session, account, body.name, body.slug)
@@ -164,7 +164,7 @@ async def create_my_org(body: OrgCreate, account: AccountDep, session: SessionDe
     )
 
 
-@router.get("/orgs/{org_id}/members", response_model=list[MemberResponse])
+@router.get("/orgs/{org_id}/members")
 async def get_members(org_id: uuid.UUID, _m: Member, session: SessionDep) -> list[MemberResponse]:
     return [MemberResponse(**m.model_dump()) for m in await list_members(session, org_id)]
 
@@ -186,7 +186,7 @@ async def _email_invite(session, org_id: uuid.UUID, account, invite, token: str)
     )
 
 
-@router.post("/orgs/{org_id}/invites", status_code=201, response_model=InviteCreateResponse)
+@router.post("/orgs/{org_id}/invites", status_code=201)
 async def invite_member(
     org_id: uuid.UUID, body: InviteCreate, admin: Admin, account: AccountDep, session: SessionDep
 ) -> InviteCreateResponse:
@@ -214,7 +214,7 @@ async def invite_member(
     )
 
 
-@router.post("/orgs/{org_id}/invites/{invite_id}/resend", response_model=InviteCreateResponse)
+@router.post("/orgs/{org_id}/invites/{invite_id}/resend")
 async def resend_invite(
     org_id: uuid.UUID, invite_id: uuid.UUID, admin: Admin, account: AccountDep, session: SessionDep
 ) -> InviteCreateResponse:
@@ -251,7 +251,7 @@ class PendingInviteResponse(BaseModel):
     created_at: datetime
 
 
-@router.get("/orgs/{org_id}/invites", response_model=list[PendingInviteResponse])
+@router.get("/orgs/{org_id}/invites")
 async def get_pending_invites(
     org_id: uuid.UUID, admin: Admin, session: SessionDep
 ) -> list[PendingInviteResponse]:
@@ -278,7 +278,7 @@ async def delete_invite(
     await record(session, account, org_id, "invite_revoked", str(invite_id))
 
 
-@router.post("/invites/{token}/accept", response_model=OrgResponse)
+@router.post("/invites/{token}/accept")
 async def accept_org_invite(token: str, account: AccountDep, session: SessionDep) -> OrgResponse:
     try:
         membership = await accept_invite(session, token, account)
@@ -297,7 +297,7 @@ async def accept_org_invite(token: str, account: AccountDep, session: SessionDep
     )
 
 
-@router.patch("/orgs/{org_id}/members/{account_id}", response_model=MemberResponse)
+@router.patch("/orgs/{org_id}/members/{account_id}")
 async def change_member_role(
     org_id: uuid.UUID,
     account_id: uuid.UUID,
@@ -364,7 +364,7 @@ class TransferOwnership(BaseModel):
 Owner = Annotated[Membership, Depends(require_org_role("owner"))]
 
 
-@router.post("/orgs/{org_id}/transfer-ownership", response_model=MemberResponse)
+@router.post("/orgs/{org_id}/transfer-ownership")
 async def transfer_org_ownership(
     org_id: uuid.UUID,
     body: TransferOwnership,
@@ -398,7 +398,7 @@ async def transfer_org_ownership(
     )
 
 
-@router.get("/orgs/{org_id}/products", response_model=list[ProductResponse])
+@router.get("/orgs/{org_id}/products")
 async def get_products(org_id: uuid.UUID, _m: Member, session: SessionDep) -> list[ProductResponse]:
     enabled = {
         e.product_slug for e in await list_enablements(session, org_id) if e.status == "enabled"
@@ -409,7 +409,7 @@ async def get_products(org_id: uuid.UUID, _m: Member, session: SessionDep) -> li
     ]
 
 
-@router.post("/orgs/{org_id}/products/{slug}/enable", response_model=ProductResponse)
+@router.post("/orgs/{org_id}/products/{slug}/enable")
 async def enable_org_product(
     org_id: uuid.UUID, slug: str, admin: Admin, account: AccountDep, session: SessionDep
 ) -> ProductResponse:
@@ -421,7 +421,7 @@ async def enable_org_product(
     return ProductResponse(slug=e.product_slug, enabled=e.status == "enabled")
 
 
-@router.get("/orgs/{org_id}/usage", response_model=list[UsageResponse])
+@router.get("/orgs/{org_id}/usage")
 async def get_usage(org_id: uuid.UUID, _m: Member, session: SessionDep) -> list[UsageResponse]:
     """This UTC month's counters (`usage_counters`), the same numbers the quotas
     enforce. Vigilo always appears, at 0 until the first scan."""
