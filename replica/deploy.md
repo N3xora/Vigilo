@@ -110,3 +110,10 @@ So do **not** run `scripts/vps_setup.sh` there: it refuses to overwrite `.env` a
 - `/opt/vigilo` runs `ebe4106` (upstream `main` before pull request #9). Database revision `0009`.
 - `/opt/vigilo/.env` uses `STRIPE_PRICE_ID_PRO=price_1UKKeS...` and `STRIPE_PRICE_ID_PRO_YEARLY=price_1UKKlh...`. The product, prices and portal that `stripe_setup.py` created on 2026-10-09 (`price_1UOfNw...`, `price_1UOfNx...`) are **not** referenced there. Decide which set to keep, then archive the other in Stripe and set the env to match. Do not change the env while subscriptions exist on the old prices without checking: the webhook maps price IDs to plans.
 - The server also runs the Nexora platform from `/opt/nexora` (`deploy.sh nexora console api ...`). Check it does not depend on upstream's NEXORA Core billing sync (`/v1/internal/org-plan`), which this branch removed.
+
+### Showing the running commit (2026-10-11)
+`/version` now includes `"commit"` (the image's `GIT_SHA` build arg; `"unknown"` without one) and `scripts/smoke.sh` prints it. The repo's own `scripts/deploy.sh` exports `GIT_SHA` before building. The shared platform script (`/opt/nexora/infrastructure/deployment/deploy.sh`, a different repository) is what actually deploys production and must export it too, or the field stays `"unknown"`. In its `vigilo)` branch, after `git pull --ff-only`, add:
+
+    export GIT_SHA="$(git rev-parse --short HEAD)"
+
+`docker compose build` then picks it up through the compose file's `GIT_SHA: ${GIT_SHA:-unknown}`.

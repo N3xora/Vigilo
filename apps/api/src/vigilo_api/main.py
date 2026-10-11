@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -77,4 +79,7 @@ def version() -> dict[str, str]:
         "env": cfg.env,
         "api_version": app.version,
         "registry_version": "unreleased",
+        # The git commit this image was built from (build arg GIT_SHA); "unknown" when the
+        # build did not pass one. Lets anyone tell what is actually running.
+        "commit": os.environ.get("GIT_SHA") or "unknown",
     }
