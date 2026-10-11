@@ -159,3 +159,6 @@ Fixed: both bugs (a floating promise in AcceptedRisksSection, a tautological ass
 
 ## 2026-10-11 uptime monitor was silently skipped after the repository changed owner
 The scheduled run at 14:50 UTC showed `skipped`: the guard `github.repository == 'N3xora/Vigilo'` stopped matching once GitHub reported the repository as `xsmartbartx/Vigilo`, so the monitor had stopped checking. Replaced with `!github.event.repository.fork`, which does not depend on the owner name. Lesson: a monitor that skips looks like a monitor that passes; check the run list, not only the failure emails.
+
+## 2026-10-11 production deploy of b0b1bc0
+Backup first (`vigilo-backup-20261011T173950Z.tar.gz`, 36 KB), then `deploy.sh vigilo api web scanner` at 17:42 UTC: `b0b1bc0` (main after #22). Includes the `/version` commit field, the backup and disk-check scripts, the SonarCloud fixes, pinned GitHub Actions and the uptime-guard fix. No migration. Smoke check: all 10 checks passed. `/version` now returns `"commit": "unknown"`: the new build is live, and the shared platform deploy script still does not export `GIT_SHA`, so the commit is not shown yet (the Nexora-repo change in `deploy.md`). The scheduled backup job runs from tonight (03:00 server time).
