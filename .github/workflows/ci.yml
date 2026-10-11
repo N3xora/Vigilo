@@ -10,8 +10,8 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
         with:
           enable-cache: true
       - run: uv python install 3.11
@@ -62,8 +62,8 @@ jobs:
       # pdf_renderer), but this exercises the "configured" code path.
       WEB_APP_URL: http://localhost:3000
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
         with:
           enable-cache: true
       - run: uv python install 3.11
@@ -107,8 +107,8 @@ jobs:
     name: Egress guard suite (SSRF defense — build blocking)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
         with:
           enable-cache: true
       - run: uv python install 3.11
@@ -124,8 +124,8 @@ jobs:
     name: Ownership verification suite (network-safety — build blocking)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
         with:
           enable-cache: true
       - run: uv python install 3.11
@@ -166,8 +166,8 @@ jobs:
       OBJECT_STORE_SECRET_KEY: vigilo-dev-secret
       OBJECT_STORE_BUCKET: vigilo-evidence
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
         with:
           enable-cache: true
       - run: uv python install 3.11
@@ -186,8 +186,8 @@ jobs:
     name: Regression diff suite (scan-diff classification — build blocking)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
         with:
           enable-cache: true
       - run: uv python install 3.11
@@ -201,8 +201,8 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: apps/web/.nvmrc
           cache: npm
@@ -225,7 +225,7 @@ jobs:
       WEB_DOMAIN: example.com
       API_DOMAIN: api.example.com
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: caddy fmt --diff
         run: docker run --rm -v "$PWD/Caddyfile:/Caddyfile:ro" caddy:2-alpine caddy fmt --diff /Caddyfile
       - name: caddy validate
@@ -247,9 +247,9 @@ jobs:
       matrix:
         image: [api, scanner, web, cli]
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: apps/${{ matrix.image }}/Dockerfile
@@ -320,9 +320,9 @@ jobs:
             echo "configured=false" >> "$GITHUB_OUTPUT"
             echo "::warning::Browser suite skipped: add E2E_CLERK_PUBLISHABLE_KEY, E2E_CLERK_SECRET_KEY and E2E_USER_EMAIL as repository secrets (not available on fork pull requests)."
           fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         if: steps.keys.outputs.configured == 'true'
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
         if: steps.keys.outputs.configured == 'true'
         with:
           enable-cache: true
@@ -330,7 +330,7 @@ jobs:
         if: steps.keys.outputs.configured == 'true'
       - run: uv sync --all-packages
         if: steps.keys.outputs.configured == 'true'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: steps.keys.outputs.configured == 'true'
         with:
           node-version-file: apps/web/.nvmrc
@@ -374,7 +374,7 @@ jobs:
         run: npx playwright test
       - name: Keep the evidence when it fails
         if: failure() && steps.keys.outputs.configured == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: e2e-failure
           path: |

@@ -51,7 +51,7 @@ REGISTRY_VERSION = "0.1"
 _DENYLIST: frozenset[str] = frozenset()  # the real denylist source is Phase 6/7
 
 
-@router.post("", status_code=202, response_model=ScanSubmissionResponse)
+@router.post("", status_code=202)
 async def submit_scan(
     body: ScanSubmission,
     request: Request,
@@ -201,7 +201,7 @@ async def submit_scan(
     return ScanSubmissionResponse(scan_job_id=job.id, status=job.status, granted_tier=job.tier)
 
 
-@router.get("/{scan_job_id}", response_model=ScanStatusResponse)
+@router.get("/{scan_job_id}")
 async def get_scan_status(scan_job_id: uuid.UUID, session: SessionDep) -> ScanStatusResponse:
     job = await get_scan_job(session, scan_job_id)
     if job is None:
