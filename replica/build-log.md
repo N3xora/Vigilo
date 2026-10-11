@@ -144,3 +144,6 @@ Audit of all 65 API routes: 11 have no auth dependency; 9 are public by design (
 
 ## 2026-10-11 production deploy: anonymous scan throttle
 Backup first (`vigilo-backup-20261011T120309Z.tar.gz`, 36 KB). Deployed `8c76349` (main after #15, includes the throttle) with `deploy.sh vigilo api web scanner` at 12:06 UTC; no migration. Smoke check: all 10 checks passed. Not yet confirmed on production: the 429 itself (submitting scans from one address would create real scan jobs), so verify it with a few scans from one address when convenient. Default limits: 30 per address and 10 per email per hour.
+
+## 2026-10-11 engine plan
+`replica/engine-plan.md`: a draft plan for connecting another product engine, with the open decisions (who bills, which engine first, shared login). Nothing built.
