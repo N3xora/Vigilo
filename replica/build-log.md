@@ -132,3 +132,6 @@ Deployed `a45294c` (main with PR #10) to the shared host through `/opt/nexora/in
 
 ## 2026-10-10 uptime check
 `.github/workflows/uptime.yml`: GitHub Actions runs `scripts/smoke.sh` against `https://vigilo.onenexora.com` and `https://vigilo-api.onenexora.com` every 10 minutes, with one retry after 60 seconds; a failed run emails the person who last edited the workflow. No new account or cost. Limits: GitHub's scheduler is best-effort and disables scheduled workflows after 60 days without repository activity; it tests from GitHub's network, so it does not replace host-level monitoring (disk, memory, container restarts). Not yet run on GitHub.
+
+## 2026-10-11 logo concepts
+`replica/logo/`: three concept marks (A steady lens, B vigil V, C proof in the lens) as 64x64 SVGs plus a self-contained `preview.html` board (16/32/64/128 px, lockup, browser tab). Nothing shipped changes: `apps/web/app/icon.svg` is still the placeholder. Not yet done: owner pick, the 1024px no-transparency app icon, favicon set, 1200x630 social image, and the check against the logos of Nexora (Capterra), Vigilos and VigiloSec, which I cannot do from here. The name itself is still uncleared for trademark.
