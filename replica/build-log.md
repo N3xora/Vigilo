@@ -147,3 +147,6 @@ Backup first (`vigilo-backup-20261011T120309Z.tar.gz`, 36 KB). Deployed `8c76349
 
 ## 2026-10-11 /version reports the running commit
 `/version` gained `commit` (from the `GIT_SHA` build arg in `apps/api/Dockerfile` and the compose build args); `scripts/deploy.sh` exports it and `scripts/smoke.sh` prints it. 2 new tests; ruff clean. Production only reports it once the shared platform deploy script exports `GIT_SHA` (one line, in `replica/deploy.md`); until then the field says `unknown`. Not deployed.
+
+## 2026-10-11 engine plan
+`replica/engine-plan.md`: a draft plan for connecting another product engine, with the open decisions (who bills, which engine first, shared login). Nothing built.
