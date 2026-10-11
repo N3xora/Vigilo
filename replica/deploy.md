@@ -117,3 +117,11 @@ So do **not** run `scripts/vps_setup.sh` there: it refuses to overwrite `.env` a
     export GIT_SHA="$(git rev-parse --short HEAD)"
 
 `docker compose build` then picks it up through the compose file's `GIT_SHA: ${GIT_SHA:-unknown}`.
+
+### Automatic backups and a disk check (2026-10-11)
+On the server, from the checkout (`/opt/vigilo`), as the user that runs Docker:
+
+    ./scripts/install-backup-cron.sh --dry-run          # shows the two cron lines
+    ./scripts/install-backup-cron.sh                    # installs them (re-runnable)
+
+03:00 daily: `backup.sh` into `~/vigilo-backups`, keeping 14 days. 03:30 daily: `check-disk.sh 85`, appending a line to `disk.log` (it exits non-zero at 85% or more; nothing emails it yet, so read the log or add an alert). The backups sit on the same disk as the data, so also copy them off the machine. A restore was tested on 2026-10-11 (the 0009-era dump restored into a scratch database: 5 accounts, 5 projects, 18 tables).
