@@ -110,10 +110,12 @@ test("S-TEAM-5 the launcher shows Vigilo as enabled and the other four as not op
   await expect(page.getByRole("button", { name: /^Enable / })).toHaveCount(0);
   await expect(page.getByText("Not open yet.")).toHaveCount(4);
 
-  // "What is planned" goes to that product's page, which says the same
-  await page.getByRole("link", { name: "What is planned" }).first().click();
-  await expect(page).toHaveURL(/\/products\/(sentinel|cspm|gateway|neurawall)$/);
-  await expect(page.getByText(/not open to organisations yet/)).toBeVisible();
+  // "What is planned" goes to that product's page on the Nexora site (this site is
+  // Vigilo's own, so it does not carry the other products' pages).
+  await expect(page.getByRole("link", { name: "What is planned" }).first()).toHaveAttribute(
+    "href",
+    /^https:\/\/onenexora\.com\/products\/(sentinel|cspm|gateway|neurawall)$/,
+  );
 });
 
 test("S-TEAM-6 the owner hands a team organisation to another member", async ({ page }) => {
