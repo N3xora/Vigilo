@@ -5,15 +5,16 @@
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, StringConstraints
 
 from vigilo_api.audit_log import record
-from vigilo_api.deps import AccountDep, SessionDep, require_org_role
+from vigilo_api.deps import AccountDep, SessionDep, claimed_org, require_org_role
 from vigilo_api.invite_email import EmailStatus, send_invite_email
 from vigilo_api.schemas import EntitlementsResponse
 from vigilo_billing import entitlements
@@ -131,8 +132,14 @@ async def _entitlements_for(session, org_id: uuid.UUID) -> EntitlementsResponse:
 
 
 @router.get("/orgs")
-async def list_my_orgs(account: AccountDep, session: SessionDep) -> list[OrgResponse]:
+async def list_my_orgs(
+    request: Request, account: AccountDep, session: SessionDep
+) -> list[OrgResponse]:
     await ensure_personal_org(session, account)
+    # ADR-0014: link the token's organisation. Not set up yet by an admin: the list
+    # simply does not include it.
+    with contextlib.suppress(OrgError):
+        await claimed_org(request, account, session)
     rows = await list_orgs_for_account(session, account.id)
     return [
         OrgResponse(

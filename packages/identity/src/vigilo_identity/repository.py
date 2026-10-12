@@ -13,15 +13,18 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vigilo_identity.models import Account, ApiKey, BrandingProfile, Subscription
-from vigilo_identity.org_repository import personal_org_id
+from vigilo_identity.org_repository import OrgError, create_org, personal_org_id
 from vigilo_identity.orm import (
     AccountRow,
     ApiKeyRow,
     BrandingProfileRow,
+    CoreOrgPlanRow,
+    MembershipRow,
     OrganizationRow,
     SubscriptionRow,
 )
@@ -133,21 +136,10 @@ async def subscription_event_is_stale(
 CORE_PROVIDER = "nexora-core"
 
 
-async def set_org_plan_from_core(
-    session: AsyncSession, clerk_org_id: str, plan_id: str
-) -> OrganizationRow | None:
-    """NEXORA Core owns the subscription of an organisation it bills and tells us the
-    resulting plan. Applies it to the organisation linked to that Clerk organisation
-    (`organizations.clerk_org_id`), or returns None when none is linked, so a plan for an
-    organisation this product has never seen changes nothing. Idempotent: one row per
-    organisation, keyed `nexora-core:<org id>`; `free` closes it, anything else opens it.
-    `account_id` is the organisation's creator, who stands in for "who paid"."""
-    result = await session.execute(
-        select(OrganizationRow).where(OrganizationRow.clerk_org_id == clerk_org_id)
-    )
-    org = result.scalar_one_or_none()
-    if org is None:
-        return None
+async def apply_core_plan(session: AsyncSession, org: OrganizationRow, plan_id: str) -> None:
+    """Idempotent: one subscription row per organisation, keyed `nexora-core:<org id>`;
+    `free` closes it, anything else opens it. `account_id` is the organisation's creator,
+    who stands in for "who paid"."""
     paid = plan_id != "free"
     await upsert_subscription(
         session,
@@ -159,7 +151,94 @@ async def set_org_plan_from_core(
         None,
         org_id=org.id,
     )
+
+
+async def set_org_plan_from_core(
+    session: AsyncSession, clerk_org_id: str, plan_id: str
+) -> OrganizationRow | None:
+    """NEXORA Core owns the subscription of an organisation it bills and tells us the
+    resulting plan. Always remembers it, then applies it to the organisation linked to
+    that Clerk organisation (`organizations.clerk_org_id`). Returns None when none is
+    linked yet; the remembered plan is applied when one is (`link_clerk_org`)."""
+    await session.execute(
+        pg_insert(CoreOrgPlanRow)
+        .values(clerk_org_id=clerk_org_id, plan_id=plan_id)
+        .on_conflict_do_update(
+            index_elements=["clerk_org_id"], set_={"plan_id": plan_id, "updated_at": func.now()}
+        )
+    )
+    result = await session.execute(
+        select(OrganizationRow).where(OrganizationRow.clerk_org_id == clerk_org_id)
+    )
+    org = result.scalar_one_or_none()
+    if org is None:
+        return None
+    await apply_core_plan(session, org, plan_id)
     return org
+
+
+_CLERK_ROLES = {"org:admin": "admin", "org:member": "member"}
+
+
+async def link_clerk_org(
+    session: AsyncSession,
+    account: Account,
+    clerk_org_id: str,
+    clerk_role: str | None,
+    name: str | None = None,
+) -> tuple[OrganizationRow, str]:
+    """ADR-0014 phase 2: the caller's Clerk token names an organisation. Returns the Vigilo
+    organisation linked to it and the caller's role there, creating both when needed.
+
+    Only a Clerk organisation admin may create the link (the creator becomes owner); anyone
+    else must wait for one to open Vigilo first (`OrgError("not_linked")`). A member is
+    added with the role Clerk gives them (`org:admin` admin, anything else member), and an
+    owner's role is never changed by a token. The plan Core last sent for the organisation
+    is applied when it is first linked. Removing someone in Clerk does not remove their
+    membership here (their token just stops naming the organisation)."""
+    mapped = _CLERK_ROLES.get(clerk_role or "", "member")
+    result = await session.execute(
+        select(OrganizationRow).where(OrganizationRow.clerk_org_id == clerk_org_id)
+    )
+    org = result.scalar_one_or_none()
+    if org is None:
+        if mapped != "admin":
+            raise OrgError(
+                "not_linked", "an organisation admin must open Vigilo first to set it up"
+            )
+        slug = f"clerk-{clerk_org_id.removeprefix('org_').lower()}"[:48]
+        try:
+            async with session.begin_nested():
+                created = await create_org(session, account, (name or "Team workspace")[:200], slug)
+                row = await session.get(OrganizationRow, created.id)
+                assert row is not None
+                row.clerk_org_id = clerk_org_id
+                await session.flush()
+        except (OrgError, IntegrityError):
+            # Two first requests raced; read back the winner's row.
+            result = await session.execute(
+                select(OrganizationRow).where(OrganizationRow.clerk_org_id == clerk_org_id)
+            )
+            row = result.scalar_one()
+        org = row
+        pending = await session.get(CoreOrgPlanRow, clerk_org_id)
+        if pending is not None:
+            await apply_core_plan(session, org, pending.plan_id)
+
+    result = await session.execute(
+        select(MembershipRow).where(
+            MembershipRow.org_id == org.id, MembershipRow.account_id == account.id
+        )
+    )
+    membership = result.scalar_one_or_none()
+    if membership is None:
+        membership = MembershipRow(org_id=org.id, account_id=account.id, role=mapped)
+        session.add(membership)
+        await session.flush()
+    elif membership.role != "owner" and membership.role != mapped:
+        membership.role = mapped
+        await session.flush()
+    return org, membership.role
 
 
 async def upsert_subscription(
