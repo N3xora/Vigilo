@@ -125,3 +125,12 @@ On the server, from the checkout (`/opt/vigilo`), as the user that runs Docker:
     ./scripts/install-backup-cron.sh                    # installs them (re-runnable)
 
 03:00 daily: `backup.sh` into `~/vigilo-backups`, keeping 14 days. 03:30 daily: `check-disk.sh 85`, appending a line to `disk.log` (it exits non-zero at 85% or more; nothing emails it yet, so read the log or add an alert). The backups sit on the same disk as the data, so also copy them off the machine. A restore was tested on 2026-10-11 (the 0009-era dump restored into a scratch database: 5 accounts, 5 projects, 18 tables).
+
+### NEXORA Core plan sync (restored 2026-10-12)
+`POST /v1/internal/org-plan` exists again. It is off (404) unless `NEXORA_SYNC_SECRET` is set, and the value must equal Core's. Production had it set for the Core integration: **check without printing values**, then redeploy:
+
+    ssh -i ~/.ssh/nexora-prod.pem opc@92.5.69.99 "grep -c '^NEXORA_SYNC_SECRET=.' /opt/vigilo/.env"   # 1 = set
+
+After the deploy an unsigned call must answer 401 (what Nexora's own smoke test expects):
+
+    curl -s -o /dev/null -w "%{http_code}\n" -X POST https://vigilo-api.onenexora.com/v1/internal/org-plan -H 'content-type: application/json' -d '{}'
