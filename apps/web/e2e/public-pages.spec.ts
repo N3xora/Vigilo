@@ -15,7 +15,7 @@ async function guard(page: Page) {
   return problems;
 }
 
-const NEXORA = process.env.NEXT_PUBLIC_NEXORA_URL ?? "https://onenexora.com";
+const NEXORA = (process.env.NEXT_PUBLIC_NEXORA_URL ?? "https://onenexora.com").replace(/\/$/, "");
 
 test("F01-H1 pricing shows Vigilo's plans only and toggles annual prices", async ({ page }) => {
   const problems = await guard(page);

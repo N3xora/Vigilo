@@ -19,7 +19,7 @@ const BUTTON =
 // back to NEXORA, then the product bar with this product's own navigation.
 export function SiteHeader() {
   return (
-    <header>
+    <header className="sticky -top-9 z-30">
       <div className="border-b border-nx-border bg-nx-surface">
         <div className="mx-auto flex h-9 w-full max-w-[1120px] items-center justify-between px-4 text-xs sm:px-6">
           <a href={NEXORA_URL} className="font-semibold tracking-[0.12em] text-nx-text hover:underline">
@@ -30,7 +30,7 @@ export function SiteHeader() {
           </a>
         </div>
       </div>
-      <div className="sticky top-0 z-30 border-b border-nx-border bg-nx-bg/90 backdrop-blur">
+      <div className="border-b border-nx-border bg-nx-bg/90 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-[1120px] items-center gap-x-6 px-4 sm:px-6">
           <Link href="/" className="text-lg font-semibold text-nx-text">
             {brand.name}

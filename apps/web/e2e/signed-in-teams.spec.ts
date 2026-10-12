@@ -30,6 +30,8 @@ const SLUG = `e2e-team-${RUN}`;
 const NAME = `E2E crew ${RUN}`;
 const MATE = `mate-${RUN}@example.test`;
 
+const NEXORA = (process.env.NEXT_PUBLIC_NEXORA_URL ?? "https://onenexora.com").replace(/\/$/, "");
+
 test("S-TEAM-1 create an organisation, then add a second member to it", async ({ page }) => {
   await signIn(page);
   await page.goto("/console/new-org");
@@ -114,7 +116,7 @@ test("S-TEAM-5 the launcher shows Vigilo as enabled and the other four as not op
   // Vigilo's own, so it does not carry the other products' pages).
   await expect(page.getByRole("link", { name: "What is planned" }).first()).toHaveAttribute(
     "href",
-    /^https:\/\/onenexora\.com\/products\/(sentinel|cspm|gateway|neurawall)$/,
+    new RegExp(`^${NEXORA.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/products/(sentinel|cspm|gateway|neurawall)$`),
   );
 });
 
