@@ -13,6 +13,7 @@ from vigilo_api.routers import (
     badge,
     billing,
     branding,
+    internal,
     monitors,
     orgs,
     public_api,
@@ -64,6 +65,7 @@ app.include_router(api_keys.router)
 app.include_router(branding.router)
 app.include_router(suppressions.router)
 app.include_router(public_api.router)
+app.include_router(internal.router)
 
 
 @app.get("/healthz")

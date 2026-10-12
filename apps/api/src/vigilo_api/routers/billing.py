@@ -107,6 +107,13 @@ async def create_portal(
     latest Stripe subscription — never one named by the client."""
     org.require("admin")
     subscription = await get_subscription_for_org(session, org.org_id)
+    if subscription is not None and subscription.provider == "nexora-core":
+        # NEXORA Core bills this organisation; it is managed there, not on Vigilo's portal.
+        raise HTTPException(
+            status_code=409,
+            detail=f"billing for this organisation is managed in NEXORA Console: "
+            f"{config().nexora_console_billing_url}",
+        )
     if subscription is None or subscription.provider != "stripe":
         raise HTTPException(status_code=404, detail="no subscription to manage")
 

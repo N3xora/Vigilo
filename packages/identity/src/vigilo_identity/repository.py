@@ -130,6 +130,38 @@ async def subscription_event_is_stale(
     return last is not None and event_created < last
 
 
+CORE_PROVIDER = "nexora-core"
+
+
+async def set_org_plan_from_core(
+    session: AsyncSession, clerk_org_id: str, plan_id: str
+) -> OrganizationRow | None:
+    """NEXORA Core owns the subscription of an organisation it bills and tells us the
+    resulting plan. Applies it to the organisation linked to that Clerk organisation
+    (`organizations.clerk_org_id`), or returns None when none is linked, so a plan for an
+    organisation this product has never seen changes nothing. Idempotent: one row per
+    organisation, keyed `nexora-core:<org id>`; `free` closes it, anything else opens it.
+    `account_id` is the organisation's creator, who stands in for "who paid"."""
+    result = await session.execute(
+        select(OrganizationRow).where(OrganizationRow.clerk_org_id == clerk_org_id)
+    )
+    org = result.scalar_one_or_none()
+    if org is None:
+        return None
+    paid = plan_id != "free"
+    await upsert_subscription(
+        session,
+        org.created_by,
+        plan_id,
+        "active" if paid else "canceled",
+        CORE_PROVIDER,
+        f"{CORE_PROVIDER}:{org.id}",
+        None,
+        org_id=org.id,
+    )
+    return org
+
+
 async def upsert_subscription(
     session: AsyncSession,
     account_id: uuid.UUID,
