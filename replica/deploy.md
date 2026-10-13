@@ -134,3 +134,8 @@ On the server, from the checkout (`/opt/vigilo`), as the user that runs Docker:
 After the deploy an unsigned call must answer 401 (what Nexora's own smoke test expects):
 
     curl -s -o /dev/null -w "%{http_code}\n" -X POST https://vigilo-api.onenexora.com/v1/internal/org-plan -H 'content-type: application/json' -d '{}'
+
+### Clerk organisations (ADR-0014 phase 2, 2026-10-12)
+1. Clerk dashboard, JWT templates, `vigilo-api`: add the claims `"org_id": "{{org.id}}"`, `"org_role": "{{org.role}}"`, `"org_name": "{{org.name}}"` (they are absent when no organisation is active, which is the personal-workspace case).
+2. Migrate (adds table `core_org_plans`; nothing else changes): `ssh ... "cd /opt/vigilo && sudo docker compose exec api uv run alembic -c packages/persistence/alembic.ini upgrade head"`, then deploy.
+3. Rollback: remove the claims from the template and nothing links; the table is harmless.
