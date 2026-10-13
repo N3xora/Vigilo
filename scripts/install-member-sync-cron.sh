@@ -16,6 +16,6 @@ if [[ "$dry" == 1 ]]; then printf 'would install:\n%s\n%s\n%s\n' "$tag" "$path" 
 
 mkdir -p "$(dirname "$log")"
 kept="$(crontab -l 2>/dev/null | grep -v -F "install-member-sync-cron.sh" \
-  | grep -v -F "vigilo_api.clerk_member_sync" || true)"
-{ [[ -n "$kept" ]] && printf '%s\n' "$kept"; printf '%s\n' "$tag"; printf '%s\n' "$line"; } | crontab -
-echo "installed:"; crontab -l | tail -3
+  | grep -v -F "vigilo_api.clerk_member_sync" | grep -v -x "$path" || true)"
+{ [[ -n "$kept" ]] && printf '%s\n' "$kept"; printf '%s\n%s\n%s\n' "$tag" "$path" "$line"; } | crontab -
+echo "installed:"; crontab -l | tail -4

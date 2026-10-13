@@ -118,3 +118,18 @@ class TestListing:
             await list_clerk_org_member_ids(
                 CLERK_ORG, httpx.MockTransport(lambda r: httpx.Response(500))
             )
+
+    async def test_a_listing_with_a_membership_lacking_a_user_is_rejected(self):
+        body = {
+            "data": [self._member("u1"), {"public_user_data": None}],
+            "total_count": 2,
+        }
+        transport = httpx.MockTransport(lambda r: httpx.Response(200, json=body))
+        with pytest.raises(IdentityProviderError):
+            await list_clerk_org_member_ids(CLERK_ORG, transport)
+
+    async def test_a_listing_shorter_than_its_total_is_rejected(self):
+        body = {"data": [self._member("u1")], "total_count": 3}
+        transport = httpx.MockTransport(lambda r: httpx.Response(200, json=body))
+        with pytest.raises(IdentityProviderError):
+            await list_clerk_org_member_ids(CLERK_ORG, transport)

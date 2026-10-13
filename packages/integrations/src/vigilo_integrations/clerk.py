@@ -70,12 +70,14 @@ async def list_clerk_org_member_ids(
                     )
                 body = response.json()
                 batch = body.get("data", [])
-                ids.update(
-                    m["public_user_data"]["user_id"]
-                    for m in batch
-                    if (m.get("public_user_data") or {}).get("user_id")
-                )
-                if len(batch) < _PAGE or len(ids) >= body.get("total_count", 0):
+                for membership in batch:
+                    # user data is nullable in Clerk's API; a membership without an id means
+                    # the listing is incomplete, and acting on it would remove real members.
+                    ids.add(membership["public_user_data"]["user_id"])
+                total = body["total_count"]
+                if len(batch) < _PAGE or len(ids) >= total:
+                    if len(ids) != total:
+                        raise IdentityProviderError("Clerk membership listing is incomplete")
                     return ids
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
         raise IdentityProviderError("Clerk membership listing failed") from exc
