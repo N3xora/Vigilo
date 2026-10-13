@@ -241,6 +241,37 @@ async def link_clerk_org(
     return org, membership.role
 
 
+async def list_clerk_linked_orgs(session: AsyncSession) -> list[OrganizationRow]:
+    result = await session.execute(
+        select(OrganizationRow).where(OrganizationRow.clerk_org_id.is_not(None))
+    )
+    return list(result.scalars())
+
+
+async def remove_members_missing_from_clerk(
+    session: AsyncSession, org: OrganizationRow, clerk_user_ids: set[str]
+) -> list[AccountRow]:
+    """ADR-0014: a Clerk-linked organisation's membership follows Clerk. Removes the
+    non-owner members whose Clerk user is not in `clerk_user_ids` and returns their accounts.
+    Owners are never removed here (an owner who left Clerk needs a person to decide), and an
+    empty list removes nobody: it more likely means a bad answer than an empty organisation."""
+    if not clerk_user_ids:
+        return []
+    result = await session.execute(
+        select(MembershipRow, AccountRow)
+        .join(AccountRow, AccountRow.id == MembershipRow.account_id)
+        .where(MembershipRow.org_id == org.id, MembershipRow.role != "owner")
+    )
+    removed: list[AccountRow] = []
+    for membership, account in result.all():
+        if account.clerk_user_id in clerk_user_ids:
+            continue
+        await session.delete(membership)
+        removed.append(account)
+    await session.flush()
+    return removed
+
+
 async def upsert_subscription(
     session: AsyncSession,
     account_id: uuid.UUID,
