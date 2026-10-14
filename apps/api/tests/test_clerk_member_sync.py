@@ -61,7 +61,8 @@ async def test_nothing_is_removed_when_clerk_cannot_be_read_or_returns_nothing(c
 
     for answer in (None, set()):
         result = await sync_clerk_members(_fetch(answer))
-        assert result.removed == 0 and result.skipped == 1
+        assert result.removed == 0
+        assert result.skipped == 1
 
     async def broken(_org: str):
         raise IdentityProviderError("down")
@@ -109,15 +110,15 @@ class TestListing:
             return httpx.Response(200, json=pages[request.url.params["offset"]])
 
         ids = await list_clerk_org_member_ids(CLERK_ORG, httpx.MockTransport(handler))
-        assert ids is not None and len(ids) == 101
+        assert ids is not None
+        assert len(ids) == 101
 
     async def test_a_missing_organisation_is_none_and_other_errors_raise(self):
         gone = httpx.MockTransport(lambda r: httpx.Response(404))
         assert await list_clerk_org_member_ids(CLERK_ORG, gone) is None
+        broken = httpx.MockTransport(lambda r: httpx.Response(500))
         with pytest.raises(IdentityProviderError):
-            await list_clerk_org_member_ids(
-                CLERK_ORG, httpx.MockTransport(lambda r: httpx.Response(500))
-            )
+            await list_clerk_org_member_ids(CLERK_ORG, broken)
 
     async def test_a_listing_with_a_membership_lacking_a_user_is_rejected(self):
         body = {

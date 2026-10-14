@@ -68,7 +68,7 @@ export function SiteHeader() {
   );
 }
 
-export function SiteShell({ children }: { children: ReactNode }) {
+export function SiteShell({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <>
       <SiteHeader />
