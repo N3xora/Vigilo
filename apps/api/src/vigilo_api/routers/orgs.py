@@ -80,6 +80,9 @@ class OrgResponse(BaseModel):
     role: str
     # The organisation's entitlements: its owner's plan, whoever is asking.
     entitlements: EntitlementsResponse
+    # True for the organisation the caller's Clerk token names (ADR-0014): the one to open
+    # by default.
+    is_claimed: bool = False
 
 
 class OrgCreate(BaseModel):
@@ -138,8 +141,9 @@ async def list_my_orgs(
     await ensure_personal_org(session, account)
     # ADR-0014: link the token's organisation. Not set up yet by an admin: the list
     # simply does not include it.
+    claimed = None
     with contextlib.suppress(OrgError):
-        await claimed_org(request, account, session)
+        claimed = await claimed_org(request, account, session)
     rows = await list_orgs_for_account(session, account.id)
     return [
         OrgResponse(
@@ -149,6 +153,7 @@ async def list_my_orgs(
             is_personal=o.is_personal,
             role=role,
             entitlements=await _entitlements_for(session, o.id),
+            is_claimed=claimed is not None and claimed.org_id == o.id,
         )
         for o, role in rows
     ]

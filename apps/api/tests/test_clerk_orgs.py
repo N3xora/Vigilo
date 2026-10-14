@@ -139,3 +139,13 @@ async def test_a_plan_core_sent_before_anyone_opened_vigilo_applies_on_the_first
 
     assert team[0]["entitlements"]["plan_id"] == "pro"
     config.cache_clear()
+
+
+async def test_only_the_organisation_the_token_names_is_flagged_as_claimed(client, monkeypatch):
+    plain = _token_as(monkeypatch)
+    assert [o["is_claimed"] for o in await _orgs(client, plain)] == [False]
+
+    headers = _token_as(monkeypatch, org_id=CLERK_ORG, org_role="org:admin")
+    orgs = await _orgs(client, headers)
+
+    assert {o["is_personal"]: o["is_claimed"] for o in orgs} == {True: False, False: True}
